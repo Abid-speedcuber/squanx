@@ -453,6 +453,8 @@ function handleTimerMouseUp() {
         
         if (holdDuration >= requiredDuration) {
             startTimer();
+        } else {
+            updateTimerDisplay();
         }
     }
 }
@@ -520,6 +522,8 @@ function handleKeyUp(e) {
                 
                 if (holdDuration >= requiredDuration) {
                     startTimer();
+                } else {
+                    updateTimerDisplay();
                 }
             }
         }
