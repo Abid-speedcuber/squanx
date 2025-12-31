@@ -10,6 +10,7 @@ const AppState = {
     activeTrainingJSON: null, // Currently selected training JSON
     developingJSONs: {}, // Multiple developing JSONs for JSON creator
     activeDevelopingJSON: 'default', // Currently selected root in JSON creator
+    sessionTimes: {}, // { algsetName: [{caseName: string, time: number}] }
     settings: {
         visualizationSize: 200,
         theme: 'dark', // 'light' or 'dark'
@@ -173,6 +174,24 @@ function saveSelectedCases() {
     localStorage.setItem('sq1SelectedCases', JSON.stringify(AppState.selectedCases));
 }
 
+// Load session times from localStorage
+function loadSessionTimes() {
+    const saved = localStorage.getItem('sq1SessionTimes');
+    if (saved) {
+        try {
+            AppState.sessionTimes = JSON.parse(saved);
+        } catch (e) {
+            console.error('Error loading session times:', e);
+            AppState.sessionTimes = {};
+        }
+    }
+}
+
+// Save session times to localStorage
+function saveSessionTimes() {
+    localStorage.setItem('sq1SessionTimes', JSON.stringify(AppState.sessionTimes));
+}
+
 // Load settings from localStorage
 function loadSettings() {
     const saved = localStorage.getItem('sq1Settings');
@@ -201,6 +220,7 @@ function initApp() {
     loadTrainingJSONs();
     loadDevelopingJSONs();
     loadSelectedCases();
+    loadSessionTimes();
     loadSettings();
     applyTheme();
     
@@ -215,6 +235,25 @@ function initApp() {
             generateNewScramble();
         }
     }
+}
+
+// Get initial timer display value
+function getInitialTimerDisplay() {
+    console.log('getInitialTimerDisplay called');
+    console.log('activeTrainingJSON:', AppState.activeTrainingJSON);
+    console.log('sessionTimes:', AppState.sessionTimes);
+    
+    if (AppState.activeTrainingJSON && AppState.sessionTimes[AppState.activeTrainingJSON]) {
+        const times = AppState.sessionTimes[AppState.activeTrainingJSON];
+        console.log('times for current algset:', times);
+        if (times.length > 0) {
+            const lastTime = times[times.length - 1].time;
+            console.log('lastTime:', lastTime);
+            return lastTime.toFixed(3);
+        }
+    }
+    console.log('returning 0.000');
+    return '0.000';
 }
 
 // Render main app structure
@@ -245,7 +284,7 @@ function renderApp() {
 
                 <div class="main-content">
                     <div class="timer-zone" id="timerZone">
-                        <div class="timer-display" id="timerDisplay">0.000</div>
+                        <div class="timer-display" id="timerDisplay">${getInitialTimerDisplay()}</div>
                     </div>
                 </div>
             `;
@@ -454,6 +493,12 @@ function handleKeyDown(e) {
                 }
             }
         }
+    } else if (e.code === 'Escape') {
+        if (AppState.timerState === 'running') {
+            e.preventDefault();
+            AppState.timerState = 'idle';
+            updateTimerDisplay();
+        }
     }
 }
 
@@ -502,6 +547,27 @@ function stopTimer() {
         const seconds = (AppState.timerElapsed / 1000).toFixed(3);
         display.textContent = seconds;
     }
+    
+    console.log('stopTimer called');
+    console.log('timerElapsed:', AppState.timerElapsed);
+    
+    // Save time to session
+    if (AppState.activeTrainingJSON && AppState.currentScramble) {
+        if (!AppState.sessionTimes[AppState.activeTrainingJSON]) {
+            AppState.sessionTimes[AppState.activeTrainingJSON] = [];
+        }
+        const timeInSeconds = AppState.timerElapsed / 1000;
+        console.log('saving time:', timeInSeconds, 'for case:', AppState.currentScramble.caseName);
+        AppState.sessionTimes[AppState.activeTrainingJSON].push({
+            caseName: AppState.currentScramble.caseName,
+            time: timeInSeconds
+        });
+        console.log('sessionTimes after push:', AppState.sessionTimes);
+        saveSessionTimes();
+    } else {
+        console.log('NOT saving time - activeTrainingJSON:', AppState.activeTrainingJSON, 'currentScramble:', AppState.currentScramble);
+    }
+    
     generateNewScramble();
 }
 
@@ -521,11 +587,14 @@ function updateTimerDisplay() {
     const display = document.getElementById('timerDisplay');
     if (!display) return;
 
+    console.log('updateTimerDisplay called, timerState:', AppState.timerState);
+
     if (AppState.timerState === 'preparing') {
         const holdDuration = Date.now() - timerHoldStartTime;
         const requiredDuration = AppState.settings.startingCueDuration * 1000;
         
         display.className = 'timer-display';
+        display.textContent = '0.000';
         if (holdDuration >= requiredDuration) {
             display.classList.add('ready');
         } else {
@@ -535,13 +604,28 @@ function updateTimerDisplay() {
         display.className = 'timer-display';
         const seconds = (AppState.timerElapsed / 1000).toFixed(3);
         display.textContent = seconds;
-    } else if (AppState.timerState === 'idle' && AppState.timerElapsed > 0) {
+    } else if (AppState.timerState === 'idle') {
+        console.log('idle state - checking for last time');
+        console.log('activeTrainingJSON:', AppState.activeTrainingJSON);
+        console.log('sessionTimes:', AppState.sessionTimes);
+        
         display.className = 'timer-display';
-        const seconds = (AppState.timerElapsed / 1000).toFixed(3);
-        display.textContent = seconds;
-    } else {
-        display.className = 'timer-display';
-        display.textContent = '0.000';
+        // Show last time from session
+        if (AppState.activeTrainingJSON && AppState.sessionTimes[AppState.activeTrainingJSON]) {
+            const times = AppState.sessionTimes[AppState.activeTrainingJSON];
+            console.log('times array:', times);
+            if (times.length > 0) {
+                const lastTime = times[times.length - 1].time;
+                console.log('setting display to lastTime:', lastTime);
+                display.textContent = lastTime.toFixed(3);
+            } else {
+                console.log('times array is empty');
+                display.textContent = '0.000';
+            }
+        } else {
+            console.log('no activeTrainingJSON or no sessionTimes for it');
+            display.textContent = '0.000';
+        }
     }
 }
 
