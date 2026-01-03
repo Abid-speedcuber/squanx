@@ -802,20 +802,29 @@ function setupInteractiveEvents(state, containerId) {
             }
         });
 
-        // Right click for piece selection modal
+        // Right click for piece selection modal (desktop only - mobile uses long press)
         newSlot.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const position = parseInt(newSlot.dataset.position);
-            const layer = newSlot.dataset.layer;
-            const isCornerZone = newSlot.classList.contains('corner-interaction-zone');
+            // Only handle if not from touch device
+            if (e.pointerType !== 'touch' && !('ontouchstart' in window)) {
+                e.preventDefault();
+                e.stopPropagation();
+                const position = parseInt(newSlot.dataset.position);
+                const layer = newSlot.dataset.layer;
+                const isCornerZone = newSlot.classList.contains('corner-interaction-zone');
 
-            showPieceSelectionModal(state, position, layer, isCornerZone, e.clientX, e.clientY, containerId);
+                showPieceSelectionModal(state, position, layer, isCornerZone, e.clientX, e.clientY, containerId);
+            }
         });
 
         // Long press for touch devices
         let pressTimer;
+        let touchStartTime = 0;
+        let touchMoved = false;
+        
         newSlot.addEventListener('touchstart', (e) => {
+            touchStartTime = Date.now();
+            touchMoved = false;
+            
             pressTimer = setTimeout(() => {
                 e.preventDefault();
                 const position = parseInt(newSlot.dataset.position);
@@ -823,15 +832,33 @@ function setupInteractiveEvents(state, containerId) {
                 const isCornerZone = newSlot.classList.contains('corner-interaction-zone');
 
                 const touch = e.touches[0];
-                showPieceSelectionModal(state, position, layer, isCornerZone, touch.clientX, touch.clientY);
+                showPieceSelectionModal(state, position, layer, isCornerZone, touch.clientX, touch.clientY, containerId);
             }, 500);
         });
 
-        newSlot.addEventListener('touchend', () => {
+        newSlot.addEventListener('touchend', (e) => {
+            const touchDuration = Date.now() - touchStartTime;
             clearTimeout(pressTimer);
+            
+            // If it was a quick tap (< 500ms) and no movement, cycle the piece
+            if (touchDuration < 500 && !touchMoved) {
+                e.preventDefault();
+                const position = parseInt(newSlot.dataset.position);
+                const layer = newSlot.dataset.layer;
+                const isCornerZone = newSlot.classList.contains('corner-interaction-zone');
+
+                cyclePiece(state, position, layer, isCornerZone, 1);
+                
+                const targetContainer = document.getElementById(containerId);
+                if (targetContainer) {
+                    targetContainer.innerHTML = createInteractiveSVG(state, { size: 200 });
+                    setupInteractiveEvents(state, containerId);
+                }
+            }
         });
 
         newSlot.addEventListener('touchmove', () => {
+            touchMoved = true;
             clearTimeout(pressTimer);
         });
     });
@@ -873,73 +900,113 @@ function showPieceSelectionModal(state, position, layer, isCornerZone, x, y, con
     const modal = document.getElementById('pieceSelectionModal');
     const grid = document.getElementById('pieceGrid');
 
-    const availablePieces = isCornerZone ? CORNER_PIECES : EDGE_PIECES;
+    // Create tab header
+    const tabHeader = document.createElement('div');
+    tabHeader.style.cssText = 'display: flex; gap: 4px; margin-bottom: 10px; border-bottom: 2px solid #ddd;';
+    
+    const edgeTab = document.createElement('button');
+    edgeTab.textContent = 'Edges';
+    edgeTab.style.cssText = 'flex: 1; padding: 8px; border: none; background: #f5f5f5; cursor: pointer; font-weight: 500; border-bottom: 3px solid transparent;';
+    
+    const cornerTab = document.createElement('button');
+    cornerTab.textContent = 'Corners';
+    cornerTab.style.cssText = 'flex: 1; padding: 8px; border: none; background: #f5f5f5; cursor: pointer; font-weight: 500; border-bottom: 3px solid transparent;';
+    
+    let currentTab = isCornerZone ? 'corner' : 'edge';
+    
+    const renderPieces = (tab) => {
+        currentTab = tab;
+        const availablePieces = tab === 'corner' ? CORNER_PIECES : EDGE_PIECES;
+        
+        // Update tab styles
+        if (tab === 'edge') {
+            edgeTab.style.background = '#fff';
+            edgeTab.style.borderBottomColor = '#0078d4';
+            cornerTab.style.background = '#f5f5f5';
+            cornerTab.style.borderBottomColor = 'transparent';
+        } else {
+            cornerTab.style.background = '#fff';
+            cornerTab.style.borderBottomColor = '#0078d4';
+            edgeTab.style.background = '#f5f5f5';
+            edgeTab.style.borderBottomColor = 'transparent';
+        }
+        
+        grid.innerHTML = '';
+        
+        availablePieces.forEach(piece => {
+            const button = document.createElement('button');
+            button.style.cssText = 'padding: 12px; background: #f5f5f5; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;';
+            button.onmouseover = () => button.style.background = '#e0e0e0';
+            button.onmouseout = () => button.style.background = '#f5f5f5';
+            button.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                state.updatePiece(position, layer, piece);
+                closePieceModal();
+                
+                const container = document.getElementById(containerId);
+                if (container) {
+                    container.innerHTML = createInteractiveSVG(state, { size: 200 });
+                    setupInteractiveEvents(state, containerId);
+                }
+            };
 
-    grid.innerHTML = '';
-
-    availablePieces.forEach(piece => {
-        const button = document.createElement('button');
-        button.style.cssText = 'padding: 12px; background: #f5f5f5; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;';
-        button.onmouseover = () => button.style.background = '#e0e0e0';
-        button.onmouseout = () => button.style.background = '#f5f5f5';
-        button.onclick = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            state.updatePiece(position, layer, piece);
-            closePieceModal();
-            
-            // Re-render the container
-            const container = document.getElementById(containerId);
-            if (container) {
-                container.innerHTML = createInteractiveSVG(state, { size: 200 });
-                setupInteractiveEvents(state, containerId);
-            }
-        };
-
-        const svgName = piece === 'E' ? 'piece_E_placeholder' : piece === 'C' ? 'piece_C_placeholder' : `piece_${piece}`;
-        button.innerHTML = `<img src="viz/piece/${svgName}.svg" width="48" height="48">`;
-        grid.appendChild(button);
+            const svgName = piece === 'E' ? 'piece_E_placeholder' : piece === 'C' ? 'piece_C_placeholder' : `piece_${piece}`;
+            button.innerHTML = `<img src="viz/piece/${svgName}.svg" width="48" height="48">`;
+            grid.appendChild(button);
+        });
+    };
+    
+    edgeTab.onclick = () => renderPieces('edge');
+    cornerTab.onclick = () => renderPieces('corner');
+    
+    tabHeader.appendChild(edgeTab);
+    tabHeader.appendChild(cornerTab);
+    
+    // Clear and setup modal - remove ALL existing tab headers
+    const modalContent = modal.querySelector('h3').parentElement;
+    const existingTabHeaders = modalContent.querySelectorAll('div');
+    existingTabHeaders.forEach(header => {
+        if (header !== grid && header.style.cssText.includes('border-bottom')) {
+            header.remove();
+        }
     });
+    
+    modalContent.insertBefore(tabHeader, grid);
+    
+    renderPieces(currentTab);
 
     // Show modal first to get its dimensions
     modal.style.display = 'block';
     modal.style.visibility = 'hidden';
     
-    // Get modal dimensions after content is populated
     const modalRect = modal.getBoundingClientRect();
     const modalWidth = modalRect.width;
     const modalHeight = modalRect.height;
     
-    // Calculate position with screen bounds checking
     let left = x;
     let top = y;
     
-    // Check right edge
     if (left + modalWidth > window.innerWidth) {
         left = window.innerWidth - modalWidth - 10;
     }
     
-    // Check left edge
     if (left < 10) {
         left = 10;
     }
     
-    // Check bottom edge
     if (top + modalHeight > window.innerHeight) {
         top = window.innerHeight - modalHeight - 10;
     }
     
-    // Check top edge
     if (top < 10) {
         top = 10;
     }
     
-    // Apply final position and make visible
     modal.style.left = `${left}px`;
     modal.style.top = `${top}px`;
     modal.style.visibility = 'visible';
 
-    // Close on outside click
     setTimeout(() => {
         const closeOnOutsideClick = (e) => {
             if (!modal.contains(e.target)) {

@@ -841,3 +841,14 @@
     justify-content: flex-end;
     z-index: 10;
 }
+
+/* Remove touch highlight flash */
+.edge-interaction-zone,
+.corner-interaction-zone,
+polygon,
+svg * {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}

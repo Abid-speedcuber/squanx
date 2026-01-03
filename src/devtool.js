@@ -306,6 +306,28 @@ class JSONCreator {
             e.stopPropagation();
         };
 
+        // Add long press for mobile context menu
+        let treePressTimer;
+        let treeTouchMoved = false;
+        
+        itemDiv.addEventListener('touchstart', (e) => {
+            treeTouchMoved = false;
+            treePressTimer = setTimeout(() => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.showContextMenu(e, currentPath, item, key);
+            }, 500);
+        });
+        
+        itemDiv.addEventListener('touchend', () => {
+            clearTimeout(treePressTimer);
+        });
+        
+        itemDiv.addEventListener('touchmove', () => {
+            treeTouchMoved = true;
+            clearTimeout(treePressTimer);
+        });
+
         return { itemDiv, isFolder, isExpanded, currentPath };
     }
 
@@ -1085,11 +1107,7 @@ class JSONCreator {
     this.hideContextMenu();
 
     if (!item.caseName) {
-        // Folders only toggle expansion
         this.toggleFolder(path);
-        this.selectedPath = path;
-        this.selectedItem = item;
-        this.renderTree();
     } else {
         this.selectedPath = path;
         this.selectedItem = item;
@@ -1325,6 +1343,9 @@ class JSONCreator {
     }
 
     showCaseEditor(item, name) {
+        // CRITICAL: Always update selectedItem when showing editor
+        this.selectedItem = item;
+        
         const title = document.getElementById('jsonCreatorTitle');
         const subtitle = document.getElementById('jsonCreatorSubtitle');
         const body = document.getElementById('jsonCreatorBody');
@@ -1357,8 +1378,9 @@ class JSONCreator {
     tabs.forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
     
-    if (!this.selectedItem) {
-        console.error('No selected item for case tab switch');
+    // If no selectedItem, the editor shouldn't be showing tabs anyway
+    if (!this.selectedItem || !this.selectedItem.caseName) {
+        console.error('Tab switch called but no case is being edited');
         return;
     }
     
@@ -1509,6 +1531,10 @@ class JSONCreator {
     showContextMenu(e, path, item, key) {
         e.preventDefault();
         e.stopPropagation();
+        
+        // Make mobile friendly
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
 
         this.selectedPath = path;
         this.selectedItem = item;
@@ -1538,12 +1564,16 @@ class JSONCreator {
         items.push({ separator: true });
         items.push({ text: 'Delete', action: () => this.delete() });
 
-        this._createContextMenu(e.pageX, e.pageY, items);
+        this._createContextMenu(x, y, items);
     }
 
     showTreeRootContextMenu(e) {
         e.preventDefault();
         e.stopPropagation();
+
+        // Make mobile friendly
+        const x = e.touches ? e.touches[0].clientX : e.clientX;
+        const y = e.touches ? e.touches[0].clientY : e.clientY;
 
         const items = [
             { text: 'New Case', action: () => { this.selectedPath = ''; this.selectedItem = null; this.newCase(); } },
@@ -1555,7 +1585,7 @@ class JSONCreator {
             { text: 'Run All', action: () => this.runJSON() }
         ];
 
-        this._createContextMenu(e.pageX, e.pageY, items);
+        this._createContextMenu(x, y, items);
     }
 
     hideContextMenu() {
