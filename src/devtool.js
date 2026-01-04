@@ -466,6 +466,7 @@ renderTemplateEditor(title, subtitle, body) {
     }
 
     _saveCurrentRoot() {
+        if (!AppState.activeDevelopingJSON || !this.treeData) return;
         AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
         saveDevelopingJSONs();
     }
@@ -1400,7 +1401,6 @@ _saveItemOrder(path, keys) {
                 `;
 
         document.body.appendChild(fullscreen);
-        this.renderTree();
         this.setupEventListeners();
 
         // Set initial editor state
@@ -1410,6 +1410,9 @@ _saveItemOrder(path, keys) {
         } else {
             this.setEditorState('welcome');
         }
+        
+        // Render tree ONCE after everything is set up
+        this.renderTree();
         this.renderEditor();
     }
 
@@ -1516,14 +1519,15 @@ _saveItemOrder(path, keys) {
     }
 
     renderTree() {
-        // Auto-save whenever tree is rendered (indicates a change)
-        AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
-        saveDevelopingJSONs();
-
         const container = document.getElementById('jsonCreatorTree');
         if (!container) return;
+        
         container.innerHTML = '';
         this.renderTreeNode(this.treeData, container, '', 0);
+        
+        // Auto-save after rendering
+        AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
+        saveDevelopingJSONs();
     }
 
     renderTreeNode(node, container, path, level) {
@@ -2259,22 +2263,31 @@ _saveItemOrder(path, keys) {
             'Delete Root',
             `Delete root "${currentName}"? This cannot be undone.`,
             () => {
-                // Create a NEW object without the deleted root
+                // CRITICAL: Save current root BEFORE deleting
+                if (AppState.activeDevelopingJSON !== currentName) {
+                    this._saveCurrentRoot();
+                }
+                
+                // Create a NEW object without the deleted root (with deep copy)
                 const newDevelopingJSONs = {};
                 Object.keys(AppState.developingJSONs).forEach(key => {
                     if (key !== currentName) {
-                        newDevelopingJSONs[key] = AppState.developingJSONs[key];
+                        newDevelopingJSONs[key] = JSON.parse(JSON.stringify(AppState.developingJSONs[key]));
                     }
                 });
                 
                 AppState.developingJSONs = newDevelopingJSONs;
+                saveDevelopingJSONs();
 
+                // If we deleted the active root, switch to another one
                 if (AppState.activeDevelopingJSON === currentName) {
                     AppState.activeDevelopingJSON = Object.keys(AppState.developingJSONs)[0];
                     this.switchRoot(AppState.activeDevelopingJSON);
+                } else {
+                    // Reload current root to ensure consistency
+                    this._loadRoot(AppState.activeDevelopingJSON);
+                    this.renderTree();
                 }
-
-                saveDevelopingJSONs();
             }
         );
     }
