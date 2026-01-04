@@ -125,6 +125,11 @@ class JSONCreator {
         this.contextMenu = null;
         this.caseTemplate = null;
 
+        this.algorithmInputMode = localStorage.getItem('algorithmInputMode') === 'true' || false;
+        this.algorithmNotationType = localStorage.getItem('algorithmNotationType') || 'normal';
+        this.tempAlgorithmInput = '';
+        this.tempHexState = null;
+
         this.DEFAULT_CASE = {
             caseName: '',
             inputTop: "RRRRRRRRRRRR",
@@ -623,6 +628,45 @@ class JSONCreator {
         const constraintHandler = isTemplate ? 'Template' : '';
 
         return `
+            <div class="json-creator-section" style="margin-bottom: 20px;">
+                <div class="algorithm-mode-group">
+                    <label class="algorithm-mode-label">
+                        <input type="checkbox" id="algorithmInputModeCheckbox" 
+                               ${this.algorithmInputMode ? 'checked' : ''}
+                               onchange="jsonCreator.toggleAlgorithmInputMode(this.checked)">
+                        <span>Input shape using algorithm text</span>
+                    </label>
+                </div>
+                
+                <div id="algorithmInputSection" class="algorithm-input-section" style="display: ${this.algorithmInputMode ? 'block' : 'none'};">
+                    <div class="algorithm-notation-group">
+                        <label class="algorithm-notation-label">
+                            <input type="radio" name="algorithmNotationType" value="normal" 
+                                   ${this.algorithmNotationType === 'normal' ? 'checked' : ''}
+                                   onchange="jsonCreator.setAlgorithmNotationType('normal')">
+                            <span>Normal Notation</span>
+                        </label>
+                        <label class="algorithm-notation-label">
+                            <input type="radio" name="algorithmNotationType" value="karnotation" 
+                                   ${this.algorithmNotationType === 'karnotation' ? 'checked' : ''}
+                                   onchange="jsonCreator.setAlgorithmNotationType('karnotation')">
+                            <span>Karnotation</span>
+                        </label>
+                    </div>
+                    
+                    <div class="algorithm-input-controls">
+                        <input type="text" id="algorithmTextInput" class="algorithm-text-input" placeholder="Input algorithm (e.g., (1,0)/ (3,3)/ (0,-3)/)" 
+                               oninput="jsonCreator.handleAlgorithmInputChange(this.value)">
+                        <button class="algorithm-apply-btn" onclick="jsonCreator.applyAlgorithmInput()">Apply</button>
+                    </div>
+                    
+                    <div id="algorithmAppliedActions" class="algorithm-applied-actions" style="display: none;">
+                        <button class="algorithm-copy-btn" onclick="jsonCreator.copyAlgorithmToField()">
+                            Copy this algorithm to the algorithm field below
+                        </button>
+                    </div>
+                </div>
+            </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                 <div class="json-creator-section">
                     <h4>Top Layer</h4>
@@ -724,6 +768,11 @@ class JSONCreator {
             window.InteractiveScrambleRenderer.DEFAULT_COLOR_SCHEME
         );
         this.topState.onChange(() => {
+            // If user manually edits shape, clear temporary algorithm state
+            this.clearTemporaryAlgorithmState();
+            const input = document.getElementById('algorithmTextInput');
+            if (input) input.value = '';
+
             if (target) {
                 target.inputTop = this.topState.topText;
                 const topInput = document.getElementById('topLayerInput');
@@ -741,6 +790,11 @@ class JSONCreator {
             window.InteractiveScrambleRenderer.DEFAULT_COLOR_SCHEME
         );
         this.bottomState.onChange(() => {
+            // If user manually edits shape, clear temporary algorithm state
+            this.clearTemporaryAlgorithmState();
+            const input = document.getElementById('algorithmTextInput');
+            if (input) input.value = '';
+
             if (target) {
                 target.inputBottom = this.bottomState.bottomText;
                 const bottomInput = document.getElementById('bottomLayerInput');
@@ -774,6 +828,189 @@ class JSONCreator {
             bottomContainer.innerHTML = window.InteractiveScrambleRenderer.createInteractiveSVG(this.bottomState, { size: 200 });
             window.InteractiveScrambleRenderer.setupInteractiveEvents(this.bottomState, 'bottomInteractive');
         }
+    }
+
+    toggleAlgorithmInputMode(checked) {
+        this.algorithmInputMode = checked;
+        localStorage.setItem('algorithmInputMode', checked);
+        
+        const section = document.getElementById('algorithmInputSection');
+        if (section) {
+            section.style.display = checked ? 'block' : 'none';
+        }
+        
+        if (!checked) {
+            this.clearTemporaryAlgorithmState();
+        }
+    }
+
+    setAlgorithmNotationType(type) {
+        this.algorithmNotationType = type;
+        localStorage.setItem('algorithmNotationType', type);
+        
+        const input = document.getElementById('algorithmTextInput');
+        if (input && input.value) {
+            this.handleAlgorithmInputChange(input.value);
+        }
+    }
+
+    handleAlgorithmInputChange(algorithmText) {
+        if (!algorithmText.trim()) {
+            this.clearTemporaryAlgorithmState();
+            this._updateShapeInputs(this.selectedItem || this.editingTemplate);
+            return;
+        }
+
+        this.tempAlgorithmInput = algorithmText;
+
+        try {
+            let processedAlg = algorithmText;
+            console.log('=== Algorithm Encoding Process ===');
+            console.log('Step 0 - Original Input:', algorithmText);
+
+            // Process based on notation type
+            if (this.algorithmNotationType === 'karnotation') {
+                console.log('Step 1 - Karnotation Mode: ENABLED');
+                if (typeof window.makeAPBLDocScrambleWCANotationPlease !== 'undefined') {
+                    processedAlg = window.makeAPBLDocScrambleWCANotationPlease(algorithmText);
+                    console.log('Step 1 - After Karnotation Conversion:', processedAlg);
+                } else {
+                    throw new Error('Karnotation converter not loaded');
+                }
+            } else {
+                console.log('Step 1 - Karnotation Mode: DISABLED (using normal notation)');
+            }
+
+            // Normalize
+            if (typeof window.ScrambleNormalizer !== 'undefined') {
+                processedAlg = window.ScrambleNormalizer.normalizeScramble(processedAlg);
+                console.log('Step 2 - After Normalization:', processedAlg);
+            } else {
+                console.warn('ScrambleNormalizer not loaded, skipping normalization');
+            }
+
+            // Invert
+            if (typeof window.pleaseInvertThisScrambleForSolutionVisualization !== 'undefined') {
+                processedAlg = window.pleaseInvertThisScrambleForSolutionVisualization(processedAlg);
+                console.log('Step 3 - After Inversion:', processedAlg);
+            } else {
+                console.warn('Inversion function not loaded, skipping inversion');
+            }
+
+            // Hexify
+            if (typeof window.sq1AlgToHex !== 'undefined') {
+                console.log('Step 4 - Starting Hexification...');
+                const hexResult = window.sq1AlgToHex(processedAlg);
+                console.log('Step 4 - Hexification Result:', hexResult);
+                console.log('  - Top Layer Hex:', hexResult.tlHex);
+                console.log('  - Bottom Layer Hex:', hexResult.blHex);
+                this.tempHexState = hexResult;
+
+                // Live update visualization
+                this._updateVisualizationFromHex(hexResult);
+                console.log('Step 5 - Visualization Updated Successfully');
+            } else {
+                throw new Error('Hexify converter not loaded');
+            }
+            
+            console.log('=== Encoding Complete ===');
+        } catch (error) {
+            console.error('❌ Algorithm conversion error at some step:', error);
+            console.error('Error details:', error.message);
+            console.error('Stack trace:', error.stack);
+            showFloatingMessage('Invalid algorithm: ' + error.message, 'error');
+            this.clearTemporaryAlgorithmState();
+        }
+    }
+
+    _updateVisualizationFromHex(hexResult) {
+        if (!window.InteractiveScrambleRenderer) return;
+
+        const topInput = document.getElementById('topLayerInput');
+        const bottomInput = document.getElementById('bottomLayerInput');
+
+        if (topInput) topInput.value = hexResult.tlHex;
+        if (bottomInput) bottomInput.value = hexResult.blHex;
+
+        if (this.topState) {
+            this.topState.topText = hexResult.tlHex;
+            this.topState.bottomText = '';
+            this.topState.parse();
+            const topContainer = document.getElementById('topInteractive');
+            if (topContainer) {
+                topContainer.innerHTML = window.InteractiveScrambleRenderer.createInteractiveSVG(this.topState, { size: 200 });
+                window.InteractiveScrambleRenderer.setupInteractiveEvents(this.topState, 'topInteractive');
+            }
+        }
+
+        if (this.bottomState) {
+            this.bottomState.topText = '';
+            this.bottomState.bottomText = hexResult.blHex;
+            this.bottomState.parse();
+            const bottomContainer = document.getElementById('bottomInteractive');
+            if (bottomContainer) {
+                bottomContainer.innerHTML = window.InteractiveScrambleRenderer.createInteractiveSVG(this.bottomState, { size: 200 });
+                window.InteractiveScrambleRenderer.setupInteractiveEvents(this.bottomState, 'bottomInteractive');
+            }
+        }
+    }
+
+    applyAlgorithmInput() {
+        if (!this.tempHexState) {
+            showFloatingMessage('No algorithm to apply', 'error');
+            return;
+        }
+
+        const target = this.editingTemplate || this.selectedItem;
+        if (!target) return;
+
+        target.inputTop = this.tempHexState.tlHex;
+        target.inputBottom = this.tempHexState.blHex;
+
+        if (!this.editingTemplate) {
+            AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
+            saveDevelopingJSONs();
+        }
+
+        // Clear input and show action button
+        const input = document.getElementById('algorithmTextInput');
+        if (input) input.value = '';
+
+        const actionsDiv = document.getElementById('algorithmAppliedActions');
+        if (actionsDiv) actionsDiv.style.display = 'block';
+
+        this.lastAppliedAlgorithm = this.tempAlgorithmInput;
+        this.clearTemporaryAlgorithmState();
+
+        showFloatingMessage('Algorithm applied successfully!', 'success');
+    }
+
+    copyAlgorithmToField() {
+        if (!this.lastAppliedAlgorithm) return;
+
+        const target = this.editingTemplate || this.selectedItem;
+        if (!target) return;
+
+        target.alg = this.lastAppliedAlgorithm;
+
+        if (!this.editingTemplate) {
+            AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
+            saveDevelopingJSONs();
+        }
+
+        const actionsDiv = document.getElementById('algorithmAppliedActions');
+        if (actionsDiv) actionsDiv.style.display = 'none';
+
+        showFloatingMessage('Algorithm copied to algorithm field!', 'success');
+    }
+
+    clearTemporaryAlgorithmState() {
+        this.tempAlgorithmInput = '';
+        this.tempHexState = null;
+        this.lastAppliedAlgorithm = null;
+
+        const actionsDiv = document.getElementById('algorithmAppliedActions');
+        if (actionsDiv) actionsDiv.style.display = 'none';
     }
 
     _setupShapeInputListeners(item, isTemplate) {
