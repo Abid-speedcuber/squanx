@@ -116,16 +116,32 @@ function showRenameModal(title, currentValue, onConfirm) {
 // Algset Devtool Implementation
 class JSONCreator {
     constructor() {
+        // Core data
         this.treeData = {};
-        this.selectedPath = '';
-        this.selectedItem = null;
         this.clipboard = null;
         this.clipboardOperation = '';
-        this.expandedFolders = new Set();
-        this.contextMenu = null;
         this.caseTemplate = null;
-        this.itemOrder = {}; // Track insertion order per folder
-
+        this.itemOrder = {};
+        
+        // UI state (separate from editor state)
+        this.uiState = {
+            selectedPath: '',           // What's selected in the tree
+            selectedItem: null,         // Reference to selected item in tree
+            expandedFolders: new Set(), // Which folders are expanded
+        };
+        
+        // Editor state (what's actually being edited)
+        this.editorState = {
+            type: 'welcome',            // 'welcome', 'case', 'template'
+            item: null,                 // Item being edited
+            itemName: '',               // Name of item being edited
+            currentTab: 'shape',        // Current tab in case editor
+        };
+        
+        // Context menu state
+        this.contextMenu = null;
+        
+        // Algorithm input state
         this.algorithmInputMode = localStorage.getItem('algorithmInputMode') === 'true' || false;
         this.algorithmNotationType = localStorage.getItem('algorithmNotationType') || 'normal';
         this.tempAlgorithmInput = '';
@@ -145,6 +161,107 @@ class JSONCreator {
             alg: ""
         };
     }
+
+    // === STATE MANAGEMENT METHODS ===
+
+setEditorState(type, item = null, itemName = '') {
+    this.editorState.type = type;
+    this.editorState.item = item;
+    this.editorState.itemName = itemName;
+    this.editorState.currentTab = 'shape';
+}
+
+getEditorItem() {
+    return this.editorState.item;
+}
+
+setEditorTab(tab) {
+    this.editorState.currentTab = tab;
+}
+
+renderEditor() {
+    const title = document.getElementById('jsonCreatorTitle');
+    const subtitle = document.getElementById('jsonCreatorSubtitle');
+    const body = document.getElementById('jsonCreatorBody');
+    
+    if (!title || !subtitle || !body) return;
+
+    switch (this.editorState.type) {
+        case 'welcome':
+            this.renderWelcomeEditor(title, subtitle, body);
+            break;
+        case 'case':
+            this.renderCaseEditor(title, subtitle, body);
+            break;
+        case 'template':
+            this.renderTemplateEditor(title, subtitle, body);
+            break;
+    }
+}
+
+renderWelcomeEditor(title, subtitle, body) {
+    title.textContent = 'SquanGo';
+    subtitle.textContent = 'Case Editor';
+    body.innerHTML = `
+        <div class="json-creator-welcome">
+            <h3>Welcome to Algset Devtool</h3>
+            <p>Create and organize your Square-1 algset cases.</p>
+            <p>Use the toolbar to add folders and cases.</p>
+        </div>
+    `;
+}
+
+renderCaseEditor(title, subtitle, body) {
+    const item = this.editorState.item;
+    const name = this.editorState.itemName;
+    
+    if (!item || !item.caseName) {
+        this.setEditorState('welcome');
+        this.renderWelcomeEditor(title, subtitle, body);
+        return;
+    }
+
+    title.innerHTML = `Case: ${name} <button class="json-creator-icon-btn" onclick="jsonCreator.runItem(jsonCreator.getEditorItem(), '${name}')" title="Run This Case" style="margin-left: 8px; display: inline-flex; align-items: center; vertical-align: middle;"><img src="viz/run.svg" width="14" height="14"></button>`;
+    subtitle.innerHTML = ``;
+
+    // Initialize arrays if they don't exist
+    if (!item.auf) item.auf = ['U0'];
+    if (!item.adf) item.adf = ['D0'];
+    if (!item.rul) item.rul = [0];
+    if (!item.rdl) item.rdl = [0];
+    if (!item.constraints) item.constraints = {};
+
+    body.innerHTML = `
+        <div class="case-editor-tabs">
+            <button class="case-editor-tab ${this.editorState.currentTab === 'shape' ? 'active' : ''}" onclick="jsonCreator.switchCaseTab('shape')">Shape Input</button>
+            <button class="case-editor-tab ${this.editorState.currentTab === 'additional' ? 'active' : ''}" onclick="jsonCreator.switchCaseTab('additional')">Additional Information</button>
+        </div>
+        <div id="caseEditorContent"></div>
+    `;
+
+    this.renderCaseTab(item, name);
+}
+
+renderTemplateEditor(title, subtitle, body) {
+    title.innerHTML = `Case Template <button class="json-creator-icon-btn" onclick="jsonCreator.saveCaseTemplate()" title="Save Template" style="margin-left: 8px; display: inline-flex; align-items: center; vertical-align: middle;"><img src="viz/save.svg" width="14" height="14" onerror="this.outerHTML='Save'"></button> <button class="json-creator-icon-btn" onclick="jsonCreator.clearCaseTemplate()" title="Clear Template" style="margin-left: 4px; display: inline-flex; align-items: center; vertical-align: middle;"><img src="viz/reset.svg" width="14" height="14" onerror="this.outerHTML='Reset'"></button>`;
+    subtitle.innerHTML = `Any new case from now on will be pre-configured according to this case template.`;
+
+    const template = this.caseTemplate || { ...this.DEFAULT_CASE };
+    delete template.caseName;
+    delete template.alg;
+
+    this.editingTemplate = JSON.parse(JSON.stringify(template));
+
+    body.innerHTML = `
+        <div class="case-editor-tabs">
+            <button class="case-editor-tab ${this.editorState.currentTab === 'shape' ? 'active' : ''}" onclick="jsonCreator.switchTemplateTab('shape')">Shape Input</button>
+            <button class="case-editor-tab ${this.editorState.currentTab === 'additional' ? 'active' : ''}" onclick="jsonCreator.switchTemplateTab('additional')">Additional Information</button>
+        </div>
+        <div id="templateEditorContent"></div>
+    `;
+
+    this.renderTemplateTab();
+}
 
     _createModal(title, bodyHTML, options = {}) {
         const modal = document.createElement('div');
@@ -258,14 +375,14 @@ class JSONCreator {
     _createTreeItemElement(key, item, path, level) {
         const currentPath = path ? `${path}/${key}` : key;
         const isFolder = !item.caseName;
-        const isExpanded = this.expandedFolders.has(currentPath);
+        const isExpanded = this.uiState.expandedFolders.has(currentPath);
 
         const itemDiv = document.createElement('div');
         itemDiv.className = 'json-creator-tree-item';
         itemDiv.style.paddingLeft = `${level * 16 + 8}px`;
         itemDiv.dataset.path = currentPath;
 
-        if (this.selectedPath === currentPath) {
+        if (this.uiState.selectedPath === currentPath) {
             itemDiv.classList.add('selected');
         }
 
@@ -355,9 +472,9 @@ class JSONCreator {
 
     _loadRoot(rootName) {
         this.treeData = JSON.parse(JSON.stringify(AppState.developingJSONs[rootName]));
-        this.selectedPath = '';
-        this.selectedItem = null;
-        this.expandedFolders.clear();
+        this.uiState.selectedPath = '';
+        this.uiState.selectedItem = null;
+        this.uiState.expandedFolders.clear();
         this.expandAllFolders(this.treeData, '');
     }
 
@@ -800,7 +917,7 @@ _saveItemOrder(path, keys) {
     _initializeShapeStates(item, isTemplate) {
         if (!window.InteractiveScrambleRenderer) return;
 
-        const target = isTemplate ? this.editingTemplate : this.selectedItem;
+        const target = isTemplate ? this.editingTemplate : this.uiState.selectedItem;
 
         this.topState = new window.InteractiveScrambleRenderer.InteractiveScrambleState(
             item.inputTop || 'RRRRRRRRRRRR',
@@ -897,7 +1014,7 @@ _saveItemOrder(path, keys) {
     handleAlgorithmInputChange(algorithmText) {
         if (!algorithmText.trim()) {
             this.clearTemporaryAlgorithmState();
-            this._updateShapeInputs(this.selectedItem || this.editingTemplate);
+            this._updateShapeInputs(this.uiState.selectedItem || this.editingTemplate);
             return;
         }
 
@@ -1001,7 +1118,7 @@ _saveItemOrder(path, keys) {
             return;
         }
 
-        const target = this.editingTemplate || this.selectedItem;
+        const target = this.editingTemplate || this.uiState.selectedItem;
         if (!target) return;
 
         target.inputTop = this.tempHexState.tlHex;
@@ -1028,7 +1145,7 @@ _saveItemOrder(path, keys) {
     copyAlgorithmToField() {
         if (!this.lastAppliedAlgorithm) return;
 
-        const target = this.editingTemplate || this.selectedItem;
+        const target = this.editingTemplate || this.uiState.selectedItem;
         if (!target) return;
 
         target.alg = this.lastAppliedAlgorithm;
@@ -1054,7 +1171,7 @@ _saveItemOrder(path, keys) {
     }
 
     resetShapeInput(layer) {
-    const target = this.editingTemplate || this.selectedItem;
+    const target = this.editingTemplate || this.getEditorItem();
     if (!target) return;
 
     const field = layer === 'top' ? 'inputTop' : 'inputBottom';
@@ -1129,7 +1246,7 @@ _saveItemOrder(path, keys) {
                     container.innerHTML = window.InteractiveScrambleRenderer.createInteractiveSVG(state, { size: 200 });
                     window.InteractiveScrambleRenderer.setupInteractiveEvents(state, containerID);
 
-                    const target = isTemplate ? this.editingTemplate : this.selectedItem;
+                    const target = isTemplate ? this.editingTemplate : this.uiState.selectedItem;
                     if (isTop) {
                         target.inputTop = value;
                     } else {
@@ -1175,24 +1292,24 @@ _saveItemOrder(path, keys) {
         const lastSelectedRoot = localStorage.getItem('jsonCreator_lastSelectedRoot');
 
         if (lastSelectedRoot === AppState.activeDevelopingJSON && lastSelectedPath) {
-            this.selectedPath = lastSelectedPath;
+            this.uiState.selectedPath = lastSelectedPath;
             const pathParts = lastSelectedPath.split('/');
             let current = this.treeData;
             for (const part of pathParts) {
                 if (current[part]) {
                     current = current[part];
                 } else {
-                    this.selectedPath = '';
+                    this.uiState.selectedPath = '';
                     break;
                 }
             }
-            if (this.selectedPath) {
-                this.selectedItem = current;
+            if (this.uiState.selectedPath) {
+                this.uiState.selectedItem = current;
             }
         }
 
         // If no valid selection, select first case found
-        if (!this.selectedPath || !this.selectedItem) {
+        if (!this.uiState.selectedPath || !this.uiState.selectedItem) {
             const findFirstCase = (obj, path = []) => {
                 for (const [key, value] of Object.entries(obj)) {
                     if (value && typeof value === 'object') {
@@ -1209,8 +1326,8 @@ _saveItemOrder(path, keys) {
 
             const firstCase = findFirstCase(this.treeData);
             if (firstCase) {
-                this.selectedPath = firstCase.path;
-                this.selectedItem = firstCase.item;
+                this.uiState.selectedPath = firstCase.path;
+                this.uiState.selectedItem = firstCase.item;
             }
         }
 
@@ -1286,13 +1403,14 @@ _saveItemOrder(path, keys) {
         this.renderTree();
         this.setupEventListeners();
 
-        // Show case editor if a case is selected, otherwise show welcome
-        if (this.selectedItem && this.selectedItem.caseName) {
-            const caseName = this.selectedPath.split('/').pop();
-            this.showCaseEditor(this.selectedItem, caseName);
+        // Set initial editor state
+        if (this.uiState.selectedItem && this.uiState.selectedItem.caseName) {
+            const caseName = this.uiState.selectedPath.split('/').pop();
+            this.setEditorState('case', this.uiState.selectedItem, caseName);
         } else {
-            this.showWelcome();
+            this.setEditorState('welcome');
         }
+        this.renderEditor();
     }
 
     expandAllFolders(node, path) {
@@ -1300,7 +1418,7 @@ _saveItemOrder(path, keys) {
             const item = node[key];
             if (typeof item === 'object' && item !== null && !item.caseName) {
                 const currentPath = path ? `${path}/${key}` : key;
-                this.expandedFolders.add(currentPath);
+                this.uiState.expandedFolders.add(currentPath);
                 this.expandAllFolders(item, currentPath);
             }
         });
@@ -1382,8 +1500,8 @@ _saveItemOrder(path, keys) {
         // Click outside to deselect
         document.getElementById('jsonCreatorTree').addEventListener('click', (e) => {
             if (e.target.id === 'jsonCreatorTree') {
-                this.selectedPath = '';
-                this.selectedItem = null;
+                this.uiState.selectedPath = '';
+                this.uiState.selectedItem = null;
                 this.renderTree();
             }
         });
@@ -1425,33 +1543,32 @@ _saveItemOrder(path, keys) {
 
     handleItemClick(e, path, item, key) {
     e.stopPropagation();
-    
-    // Close any open context menu immediately
     this.hideContextMenu();
 
-    // Always update selected path and item
-    this.selectedPath = path;
-    this.selectedItem = item;
+    // Update UI state (tree selection)
+    this.uiState.selectedPath = path;
+    this.uiState.selectedItem = item;
     localStorage.setItem('jsonCreator_lastSelectedPath', path);
     localStorage.setItem('jsonCreator_lastSelectedRoot', AppState.activeDevelopingJSON);
 
     if (!item.caseName) {
+        // Folder clicked - toggle and re-render tree, but DON'T change editor
         this.toggleFolder(path);
         this.renderTree();
-        this.showFolderView(key);
     } else {
+        // Case clicked - update editor state and render both
+        this.setEditorState('case', item, key);
         this.renderTree();
-        this.showCaseEditor(item, key);
+        this.renderEditor();
     }
 }
 
     toggleFolder(path) {
-        if (this.expandedFolders.has(path)) {
-            this.expandedFolders.delete(path);
+        if (this.uiState.expandedFolders.has(path)) {
+            this.uiState.expandedFolders.delete(path);
         } else {
-            this.expandedFolders.add(path);
+            this.uiState.expandedFolders.add(path);
         }
-        this.renderTree();
     }
 
     startRename(itemDiv, input, currentName) {
@@ -1478,14 +1595,8 @@ _saveItemOrder(path, keys) {
         }
 
         const item = parent[originalName];
-        delete parent[originalName];
-        parent[newName] = item;
-
-        if (item.caseName) {
-            item.caseName = newName;
-        }
-
-        // Update item order
+        
+        // Update item order BEFORE modifying parent object
         const keys = this._getOrderedKeys(parent, parentPath);
         const orderIndex = keys.indexOf(originalName);
         if (orderIndex !== -1) {
@@ -1493,10 +1604,25 @@ _saveItemOrder(path, keys) {
             this._saveItemOrder(parentPath, keys);
         }
 
-        // Update selected path if this was the selected item
-        if (this.selectedPath === path) {
-            this.selectedPath = parentPath ? `${parentPath}/${newName}` : newName;
-            localStorage.setItem('jsonCreator_lastSelectedPath', this.selectedPath);
+        // Now modify parent object
+        delete parent[originalName];
+        parent[newName] = item;
+
+        if (item.caseName) {
+            item.caseName = newName;
+        }
+
+        // Update UI state if this was the selected item
+        if (this.uiState.selectedPath === path) {
+            this.uiState.selectedPath = parentPath ? `${parentPath}/${newName}` : newName;
+            this.uiState.selectedItem = item;
+            localStorage.setItem('jsonCreator_lastSelectedPath', this.uiState.selectedPath);
+        }
+
+        // Update editor state if this was being edited
+        if (this.editorState.item === item) {
+            this.editorState.itemName = newName;
+            this.renderEditor();
         }
 
         this.renderTree();
@@ -1505,16 +1631,16 @@ _saveItemOrder(path, keys) {
     newCase() {
         let parent, targetPath;
         
-        if (this.selectedItem && this.selectedItem.caseName) {
+        if (this.uiState.selectedItem && this.uiState.selectedItem.caseName) {
             // If a case is selected, add to its parent folder
-            const pathParts = this.selectedPath.split('/');
+            const pathParts = this.uiState.selectedPath.split('/');
             pathParts.pop();
             targetPath = pathParts.join('/');
             parent = targetPath ? this._navigateToFolder(targetPath) : this.treeData;
         } else {
             // If a folder is selected or nothing is selected
             parent = this.getTargetFolder();
-            targetPath = this.selectedPath;
+            targetPath = this.uiState.selectedPath;
         }
 
         const name = this.getUniqueName(parent, 'New Case');
@@ -1527,48 +1653,56 @@ _saveItemOrder(path, keys) {
             parent[name] = { ...this.DEFAULT_CASE, caseName: name };
         }
 
+        // Update item order
+        const keys = this._getOrderedKeys(parent, targetPath);
+        keys.push(name);
+        this._saveItemOrder(targetPath, keys);
+
         // Auto-expand parent folder if not already expanded
-        if (targetPath && !this.expandedFolders.has(targetPath)) {
-            this.expandedFolders.add(targetPath);
+        if (targetPath && !this.uiState.expandedFolders.has(targetPath)) {
+            this.uiState.expandedFolders.add(targetPath);
         }
 
         this.renderTree();
-
         this._autoRenameAndFocus(targetPath, name);
     }
 
     newFolder() {
         let parent, targetPath;
         
-        if (this.selectedItem && this.selectedItem.caseName) {
+        if (this.uiState.selectedItem && this.uiState.selectedItem.caseName) {
             // If a case is selected, add to its parent folder
-            const pathParts = this.selectedPath.split('/');
+            const pathParts = this.uiState.selectedPath.split('/');
             pathParts.pop();
             targetPath = pathParts.join('/');
             parent = targetPath ? this._navigateToFolder(targetPath) : this.treeData;
         } else {
             // If a folder is selected or nothing is selected
             parent = this.getTargetFolder();
-            targetPath = this.selectedPath;
+            targetPath = this.uiState.selectedPath;
         }
 
         const name = this.getUniqueName(parent, 'New Folder');
         parent[name] = {};
 
+        // Update item order
+        const keys = this._getOrderedKeys(parent, targetPath);
+        keys.push(name);
+        this._saveItemOrder(targetPath, keys);
+
         // Auto-expand parent folder if not already expanded
-        if (targetPath && !this.expandedFolders.has(targetPath)) {
-            this.expandedFolders.add(targetPath);
+        if (targetPath && !this.uiState.expandedFolders.has(targetPath)) {
+            this.uiState.expandedFolders.add(targetPath);
         }
 
         this.renderTree();
-
         this._autoRenameAndFocus(targetPath, name);
     }
 
     getTargetFolder() {
-        if (!this.selectedPath) return this.treeData;
+        if (!this.uiState.selectedPath) return this.treeData;
 
-        const pathParts = this.selectedPath.split('/');
+        const pathParts = this.uiState.selectedPath.split('/');
         let current = this.treeData;
 
         for (const part of pathParts) {
@@ -1597,10 +1731,10 @@ _saveItemOrder(path, keys) {
     }
 
     copy() {
-        if (!this.selectedItem) return;
-        const name = this.selectedPath.split('/').pop();
+        if (!this.uiState.selectedItem) return;
+        const name = this.uiState.selectedPath.split('/').pop();
         this.clipboard = {
-            item: JSON.parse(JSON.stringify(this.selectedItem)),
+            item: JSON.parse(JSON.stringify(this.uiState.selectedItem)),
             name: name
         };
         this.clipboardOperation = 'copy';
@@ -1608,6 +1742,15 @@ _saveItemOrder(path, keys) {
 
     paste() {
         if (!this.clipboard) return;
+
+        let targetPath;
+        if (this.uiState.selectedItem && this.uiState.selectedItem.caseName) {
+            const pathParts = this.uiState.selectedPath.split('/');
+            pathParts.pop();
+            targetPath = pathParts.join('/');
+        } else {
+            targetPath = this.uiState.selectedPath;
+        }
 
         const parent = this.getTargetFolder();
         const name = this.getUniqueName(parent, this.clipboard.name);
@@ -1617,33 +1760,48 @@ _saveItemOrder(path, keys) {
             parent[name].caseName = name;
         }
 
+        // Update item order
+        const keys = this._getOrderedKeys(parent, targetPath);
+        keys.push(name);
+        this._saveItemOrder(targetPath, keys);
+
         // Auto-expand parent folder if not already expanded
-        if (this.selectedPath && !this.expandedFolders.has(this.selectedPath)) {
-            this.expandedFolders.add(this.selectedPath);
+        if (targetPath && !this.uiState.expandedFolders.has(targetPath)) {
+            this.uiState.expandedFolders.add(targetPath);
         }
 
         this.renderTree();
-
-        this._autoRenameAndFocus(this.selectedPath, name);
+        this._autoRenameAndFocus(targetPath, name);
     }
 
     delete() {
-        if (!this.selectedPath) return;
+        if (!this.uiState.selectedPath) return;
 
         showConfirmationModal(
             'Delete Item',
-            `Delete "${this.selectedPath.split('/').pop()}"?`,
+            `Delete "${this.uiState.selectedPath.split('/').pop()}"?`,
             () => {
-
-                const pathParts = this.selectedPath.split('/');
+                const pathParts = this.uiState.selectedPath.split('/');
                 const itemName = pathParts.pop();
-                const parent = this._navigateToParent(this.selectedPath);
+                const parentPath = pathParts.join('/');
+                const parent = this._navigateToParent(this.uiState.selectedPath);
 
                 delete parent[itemName];
-                this.selectedPath = '';
-                this.selectedItem = null;
+
+                // Update item order
+                const keys = this._getOrderedKeys(parent, parentPath);
+                const newKeys = keys.filter(k => k !== itemName);
+                this._saveItemOrder(parentPath, newKeys);
+
+                // If we deleted what was being edited, show welcome
+                if (this.editorState.item === this.uiState.selectedItem) {
+                    this.setEditorState('welcome');
+                    this.renderEditor();
+                }
+
+                this.uiState.selectedPath = '';
+                this.uiState.selectedItem = null;
                 this.renderTree();
-                this.showWelcome();
             }
         );
     }
@@ -1681,124 +1839,36 @@ _saveItemOrder(path, keys) {
         this.renderTree();
     }
 
-    showWelcome() {
-        const body = document.getElementById('jsonCreatorBody');
-        const title = document.getElementById('jsonCreatorTitle');
-        const subtitle = document.getElementById('jsonCreatorSubtitle');
-
-        title.textContent = 'SquanGo';
-        subtitle.textContent = 'Case Editor';
-        body.innerHTML = `
-                    <div class="json-creator-welcome">
-                        <h3>Welcome to Algset Devtool</h3>
-                        <p>Create and organize your Square-1 algset cases.</p>
-                        <p>Use the toolbar to add folders and cases.</p>
-                    </div>
-                `;
-    }
-
-    showFolderView(name) {
-        // Don't change the screen, keep showing the last case
-        // Just update the title to show folder is selected
-        const title = document.getElementById('jsonCreatorTitle');
-        const subtitle = document.getElementById('jsonCreatorSubtitle');
-
-        title.textContent = `Folder: ${name}`;
-        subtitle.textContent = 'Folder selected - use toolbar to add cases or subfolders';
-    }
-
-    showCaseEditor(item, name) {
-        // CRITICAL: Always update selectedItem when showing editor
-        this.selectedItem = item;
-        
-        const title = document.getElementById('jsonCreatorTitle');
-        const subtitle = document.getElementById('jsonCreatorSubtitle');
-        const body = document.getElementById('jsonCreatorBody');
-
-        title.innerHTML = `Case: ${name} <button class="json-creator-icon-btn" onclick="jsonCreator.runItem(jsonCreator.selectedItem, '${name}')" title="Run This Case" style="margin-left: 8px; display: inline-flex; align-items: center; vertical-align: middle;"><img src="viz/run.svg" width="14" height="14"></button>`;
-        subtitle.innerHTML = ``;
-
-        // Initialize arrays if they don't exist
-        if (!item.auf) item.auf = ['U0'];
-        if (!item.adf) item.adf = ['D0'];
-        if (!item.rul) item.rul = [0];
-        if (!item.rdl) item.rdl = [0];
-        if (!item.constraints) item.constraints = {};
-
-        body.innerHTML = `
-            <div class="case-editor-tabs">
-                <button class="case-editor-tab active" onclick="jsonCreator.switchCaseTab('shape')">Shape Input</button>
-                <button class="case-editor-tab" onclick="jsonCreator.switchCaseTab('additional')">Additional Information</button>
-            </div>
-            <div id="caseEditorContent"></div>
-        `;
-
-        this.currentCaseTab = 'shape';
-        this.renderCaseTab(item, name);
-    }
-
     switchCaseTab(tab) {
-    this.currentCaseTab = tab;
+    if (this.editorState.type !== 'case') return;
+    
+    this.setEditorTab(tab);
+    
     const tabs = document.querySelectorAll('.case-editor-tab');
     tabs.forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
     
-    // If no selectedItem, the editor shouldn't be showing tabs anyway
-    if (!this.selectedItem || !this.selectedItem.caseName) {
-        console.error('Tab switch called but no case is being edited');
-        return;
-    }
+    const item = this.getEditorItem();
+    if (!item || !item.caseName) return;
     
-    const content = document.getElementById('caseEditorContent');
-    if (!content) {
-        console.error('caseEditorContent not found!');
-        return;
-    }
-    
-    // Render immediately
-    this.renderCaseTab(this.selectedItem, this.selectedPath.split('/').pop());
-    
-    // Enforce render check after 20ms
-    setTimeout(() => {
-        const verifyContent = document.getElementById('caseEditorContent');
-        if (!verifyContent || verifyContent.children.length === 0) {
-            console.warn('Tab content failed to render, enforcing re-render');
-            this.renderCaseTab(this.selectedItem, this.selectedPath.split('/').pop());
-            
-            // Double-check after another 20ms
-            setTimeout(() => {
-                const doubleCheck = document.getElementById('caseEditorContent');
-                if (!doubleCheck || doubleCheck.children.length === 0) {
-                    console.error('Re-render also failed, forcing full case editor reload');
-                    this.showCaseEditor(this.selectedItem, this.selectedPath.split('/').pop());
-                }
-            }, 20);
-        }
-    }, 20);
+    this.renderCaseTab(item, this.editorState.itemName);
 }
 
     renderCaseTab(item, name) {
         const content = document.getElementById('caseEditorContent');
-        if (!content) {
-            console.error('caseEditorContent not found!');
-            return;
-        }
+        if (!content || !item) return;
 
-        if (!item) {
-            console.error('No item provided to renderCaseTab');
-            return;
-        }
-
-        if (this.currentCaseTab === 'shape') {
+        if (this.editorState.currentTab === 'shape') {
             this._renderShapeInputTab(item, content, false);
-        } else if (this.currentCaseTab === 'additional') {
+        } else if (this.editorState.currentTab === 'additional') {
             content.innerHTML = this._generateAdditionalInfoHTML(item, false);
         }
     }
 
     updateField(field, value) {
-        if (this.selectedItem) {
-            this.selectedItem[field] = value;
+        const item = this.getEditorItem();
+        if (item) {
+            item[field] = value;
             AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
             saveDevelopingJSONs();
         }
@@ -1822,37 +1892,41 @@ _saveItemOrder(path, keys) {
         AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
         saveDevelopingJSONs();
         if (!isTemplate) {
-            this.renderCaseTab(this.selectedItem, this.selectedPath.split('/').pop());
+            const item = this.getEditorItem();
+            if (item) {
+                this.renderCaseTab(item, this.editorState.itemName);
+            }
         } else {
             this.renderTemplateTab();
         }
     }
 
     updateEquator(symbol, checked) {
-        this._updateArray(this.selectedItem, 'equator', symbol, checked);
+        this._updateArray(this.getEditorItem(), 'equator', symbol, checked);
         this._saveAndRefresh();
     }
 
     updateParityMode(mode) {
-        if (this.selectedItem) {
+        const item = this.getEditorItem();
+        if (item) {
             if (mode === 'ignore') {
-                this.selectedItem.parity = [];
+                item.parity = [];
             } else if (mode === 'overall') {
-                this.selectedItem.parity = ['on'];
+                item.parity = ['on'];
             } else if (mode === 'color-specific') {
-                this.selectedItem.parity = ['tnbn'];
+                item.parity = ['tnbn'];
             }
             this._saveAndRefresh();
         }
     }
 
     updateMoveArray(field, move, checked) {
-        this._updateArray(this.selectedItem, field, move, checked);
+        this._updateArray(this.getEditorItem(), field, move, checked);
         this._saveAndRefresh();
     }
 
     updateNumberArray(field, num, checked) {
-        this._updateArray(this.selectedItem, field, num, checked);
+        this._updateArray(this.getEditorItem(), field, num, checked);
         this._saveAndRefresh();
     }
 
@@ -1884,12 +1958,12 @@ _saveItemOrder(path, keys) {
     }
 
     addConstraint() {
-        this._handleConstraint(this.selectedItem, 'add');
+        this._handleConstraint(this.getEditorItem(), 'add');
         this._saveAndRefresh();
     }
 
     removeConstraint(position) {
-        this._handleConstraint(this.selectedItem, 'remove', position);
+        this._handleConstraint(this.getEditorItem(), 'remove', position);
         this._saveAndRefresh();
     }
 
@@ -1901,8 +1975,8 @@ _saveItemOrder(path, keys) {
         const x = e.touches ? e.touches[0].clientX : e.clientX;
         const y = e.touches ? e.touches[0].clientY : e.clientY;
 
-        this.selectedPath = path;
-        this.selectedItem = item;
+        this.uiState.selectedPath = path;
+        this.uiState.selectedItem = item;
         this.renderTree();
 
         const isFolder = !item.caseName;
@@ -1942,10 +2016,10 @@ _saveItemOrder(path, keys) {
         const y = e.touches ? e.touches[0].clientY : e.clientY;
 
         const items = [
-            { text: 'New Case', action: () => { this.selectedPath = ''; this.selectedItem = null; this.newCase(); } },
-            { text: 'New Folder', action: () => { this.selectedPath = ''; this.selectedItem = null; this.newFolder(); } },
+            { text: 'New Case', action: () => { this.uiState.selectedPath = ''; this.uiState.selectedItem = null; this.newCase(); } },
+            { text: 'New Folder', action: () => { this.uiState.selectedPath = ''; this.uiState.selectedItem = null; this.newFolder(); } },
             { text: 'Bulk Import', action: () => this.openBulkImportFromRoot() },
-            { text: 'Paste', action: () => { this.selectedPath = ''; this.selectedItem = null; this.paste(); }, disabled: !this.clipboard },
+            { text: 'Paste', action: () => { this.uiState.selectedPath = ''; this.uiState.selectedItem = null; this.paste(); }, disabled: !this.clipboard },
             { separator: true },
             { text: 'Copy JSON to Clipboard', action: () => this.copyItemJSON(this.treeData) },
             { separator: true },
@@ -2042,8 +2116,10 @@ _saveItemOrder(path, keys) {
         const storedTemplate = localStorage.getItem(templateKey);
         this.caseTemplate = storedTemplate ? JSON.parse(storedTemplate) : null;
 
+        // Reset editor to welcome
+        this.setEditorState('welcome');
         this.renderTree();
-        this.showWelcome();
+        this.renderEditor();
 
         const rootBtn = document.getElementById('rootSelectorBtn');
         if (rootBtn) rootBtn.textContent = rootName;
@@ -2183,8 +2259,15 @@ _saveItemOrder(path, keys) {
             'Delete Root',
             `Delete root "${currentName}"? This cannot be undone.`,
             () => {
-
-                delete AppState.developingJSONs[currentName];
+                // Create a NEW object without the deleted root
+                const newDevelopingJSONs = {};
+                Object.keys(AppState.developingJSONs).forEach(key => {
+                    if (key !== currentName) {
+                        newDevelopingJSONs[key] = AppState.developingJSONs[key];
+                    }
+                });
+                
+                AppState.developingJSONs = newDevelopingJSONs;
 
                 if (AppState.activeDevelopingJSON === currentName) {
                     AppState.activeDevelopingJSON = Object.keys(AppState.developingJSONs)[0];
@@ -2481,19 +2564,6 @@ _saveItemOrder(path, keys) {
     }
 
     openCaseTemplate() {
-        // Store the last selected case path so we can return to it
-        this.lastCaseBeforeTemplate = {
-            path: this.selectedPath,
-            item: this.selectedItem
-        };
-
-        const title = document.getElementById('jsonCreatorTitle');
-        const subtitle = document.getElementById('jsonCreatorSubtitle');
-        const body = document.getElementById('jsonCreatorBody');
-
-        title.innerHTML = `Case Template <button class="json-creator-icon-btn" onclick="jsonCreator.saveCaseTemplate()" title="Save Template" style="margin-left: 8px; display: inline-flex; align-items: center; vertical-align: middle;"><img src="viz/save.svg" width="14" height="14" onerror="this.outerHTML='Save'"></button> <button class="json-creator-icon-btn" onclick="jsonCreator.clearCaseTemplate()" title="Clear Template" style="margin-left: 4px; display: inline-flex; align-items: center; vertical-align: middle;"><img src="viz/reset.svg" width="14" height="14" onerror="this.outerHTML='Reset'"></button>`;
-        subtitle.innerHTML = `Any new case from now on will be pre-configured according to this case template.`;
-
         // Use existing template or create default
         const template = this.caseTemplate || { ...this.DEFAULT_CASE };
         delete template.caseName;
@@ -2502,64 +2572,29 @@ _saveItemOrder(path, keys) {
         // Store the template temporarily for editing
         this.editingTemplate = JSON.parse(JSON.stringify(template));
 
-        body.innerHTML = `
-        <div class="case-editor-tabs">
-            <button class="case-editor-tab active" onclick="jsonCreator.switchTemplateTab('shape')">Shape Input</button>
-            <button class="case-editor-tab" onclick="jsonCreator.switchTemplateTab('additional')">Additional Information</button>
-        </div>
-        <div id="templateEditorContent"></div>
-    `;
-
-        this.currentTemplateTab = 'shape';
-        this.renderTemplateTab();
+        this.setEditorState('template');
+        this.renderEditor();
     }
 
     switchTemplateTab(tab) {
-    this.currentTemplateTab = tab;
+    if (this.editorState.type !== 'template') return;
+    
+    this.setEditorTab(tab);
+    
     const tabs = document.querySelectorAll('.case-editor-tab');
     tabs.forEach(t => t.classList.remove('active'));
     event.target.classList.add('active');
     
-    if (!this.editingTemplate) {
-        console.error('No template being edited');
-        return;
-    }
-    
-    const content = document.getElementById('templateEditorContent');
-    if (!content) {
-        console.error('templateEditorContent not found!');
-        return;
-    }
-    
-    // Render immediately
     this.renderTemplateTab();
-    
-    // Enforce render check after 20ms
-    setTimeout(() => {
-        const verifyContent = document.getElementById('templateEditorContent');
-        if (!verifyContent || verifyContent.children.length === 0) {
-            console.warn('Template tab content failed to render, enforcing re-render');
-            this.renderTemplateTab();
-            
-            // Double-check after another 20ms
-            setTimeout(() => {
-                const doubleCheck = document.getElementById('templateEditorContent');
-                if (!doubleCheck || doubleCheck.children.length === 0) {
-                    console.error('Template re-render also failed, forcing full template editor reload');
-                    this.openCaseTemplate();
-                }
-            }, 20);
-        }
-    }, 20);
 }
 
     renderTemplateTab() {
         const content = document.getElementById('templateEditorContent');
         if (!content || !this.editingTemplate) return;
 
-        if (this.currentTemplateTab === 'shape') {
+        if (this.editorState.currentTab === 'shape') {
             this._renderShapeInputTab(this.editingTemplate, content, true);
-        } else if (this.currentTemplateTab === 'additional') {
+        } else if (this.editorState.currentTab === 'additional') {
             content.innerHTML = this._generateAdditionalInfoHTML(this.editingTemplate, true);
         }
     }
@@ -2603,16 +2638,14 @@ _saveItemOrder(path, keys) {
         localStorage.setItem(templateKey, JSON.stringify(this.caseTemplate));
         showFloatingMessage('Case template saved successfully!', 'success');
 
-        // Restore the last selected case
-        if (this.lastCaseBeforeTemplate && this.lastCaseBeforeTemplate.item && this.lastCaseBeforeTemplate.item.caseName) {
-            this.selectedPath = this.lastCaseBeforeTemplate.path;
-            this.selectedItem = this.lastCaseBeforeTemplate.item;
-            this.renderTree();
-            const caseName = this.selectedPath.split('/').pop();
-            this.showCaseEditor(this.selectedItem, caseName);
+        // Return to whatever was being edited before
+        if (this.uiState.selectedItem && this.uiState.selectedItem.caseName) {
+            const caseName = this.uiState.selectedPath.split('/').pop();
+            this.setEditorState('case', this.uiState.selectedItem, caseName);
         } else {
-            this.showWelcome();
+            this.setEditorState('welcome');
         }
+        this.renderEditor();
     }
 
     clearCaseTemplate() {
@@ -2626,16 +2659,14 @@ _saveItemOrder(path, keys) {
                 localStorage.removeItem(templateKey);
                 showFloatingMessage('Case template cleared!', 'success');
 
-                // Restore the last selected case
-                if (this.lastCaseBeforeTemplate && this.lastCaseBeforeTemplate.item && this.lastCaseBeforeTemplate.item.caseName) {
-                    this.selectedPath = this.lastCaseBeforeTemplate.path;
-                    this.selectedItem = this.lastCaseBeforeTemplate.item;
-                    this.renderTree();
-                    const caseName = this.selectedPath.split('/').pop();
-                    this.showCaseEditor(this.selectedItem, caseName);
+                // Return to whatever was being edited before
+                if (this.uiState.selectedItem && this.uiState.selectedItem.caseName) {
+                    const caseName = this.uiState.selectedPath.split('/').pop();
+                    this.setEditorState('case', this.uiState.selectedItem, caseName);
                 } else {
-                    this.showWelcome();
+                    this.setEditorState('welcome');
                 }
+                this.renderEditor();
             }
         );
     }
@@ -2697,7 +2728,7 @@ _saveItemOrder(path, keys) {
             }
 
             saveDevelopingJSONs();
-            this.expandedFolders.clear();
+            this.uiState.expandedFolders.clear();
             this.expandAllFolders(this.treeData, '');
             this.renderTree();
             showFloatingMessage('Data imported to root successfully!', 'success');
@@ -2713,13 +2744,16 @@ _saveItemOrder(path, keys) {
             () => {
                 this.treeData = {};
                 AppState.developingJSONs[AppState.activeDevelopingJSON] = {};
+                this.itemOrder = {};
                 saveDevelopingJSONs();
 
-                this.selectedPath = '';
-                this.selectedItem = null;
-                this.expandedFolders.clear();
+                this.uiState.selectedPath = '';
+                this.uiState.selectedItem = null;
+                this.uiState.expandedFolders.clear();
+                
+                this.setEditorState('welcome');
                 this.renderTree();
-                this.showWelcome();
+                this.renderEditor();
 
                 showFloatingMessage('Root reset successfully!', 'success');
             }
@@ -2731,8 +2765,8 @@ _saveItemOrder(path, keys) {
             'Bulk Import to Root',
             'Bulk importing directly to the project root is deprecated. Do you want to proceed anyway?',
             () => {
-                this.selectedPath = '';
-                this.selectedItem = null;
+                this.uiState.selectedPath = '';
+                this.uiState.selectedItem = null;
                 this.openBulkImport();
             }
         );
@@ -2911,8 +2945,8 @@ _saveItemOrder(path, keys) {
             }
 
             // Auto-expand parent folder if not already expanded
-            if (this.selectedPath && !this.expandedFolders.has(this.selectedPath)) {
-                this.expandedFolders.add(this.selectedPath);
+            if (this.uiState.selectedPath && !this.uiState.expandedFolders.has(this.uiState.selectedPath)) {
+                this.uiState.expandedFolders.add(this.uiState.selectedPath);
             }
 
             this.renderTree();
@@ -3019,12 +3053,14 @@ _saveItemOrder(path, keys) {
                 saveDevelopingJSONs();
 
                 this.treeData = JSON.parse(JSON.stringify(DEFAULT_ALGSET));
-                this.selectedPath = '';
-                this.selectedItem = null;
-                this.expandedFolders.clear();
+                this.uiState.selectedPath = '';
+                this.uiState.selectedItem = null;
+                this.uiState.expandedFolders.clear();
                 this.expandAllFolders(this.treeData, '');
+                
+                this.setEditorState('welcome');
                 this.renderTree();
-                this.showWelcome();
+                this.renderEditor();
 
                 const rootBtn = document.getElementById('rootSelectorBtn');
                 if (rootBtn) rootBtn.textContent = 'default';
