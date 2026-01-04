@@ -16,7 +16,7 @@ const DEFAULT_COLOR_SCHEME = {
     placeholderBlackEdge: '#000000ff',
     placeholderBlackCorner: '#000000ff',
     placeholderWhiteEdge: '#ffffffff',
-    placeholderWhiteCorner: '#f5f5f5',
+    placeholderWhiteCorner: '#ffffffff',
     emptyFill: '#f6f6f6ff',
     emptyStroke: '#d0d0d0',
     ringStroke: 'transparent'

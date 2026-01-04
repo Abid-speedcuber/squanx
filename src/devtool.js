@@ -1783,6 +1783,7 @@ class JSONCreator {
         if (isFolder) {
             items.push({ text: 'New Case', action: () => this.newCase() });
             items.push({ text: 'New Folder', action: () => this.newFolder() });
+            items.push({ text: 'Bulk Import', action: () => this.openBulkImport() });
             items.push({ separator: true });
         }
 
@@ -1815,6 +1816,7 @@ class JSONCreator {
         const items = [
             { text: 'New Case', action: () => { this.selectedPath = ''; this.selectedItem = null; this.newCase(); } },
             { text: 'New Folder', action: () => { this.selectedPath = ''; this.selectedItem = null; this.newFolder(); } },
+            { text: 'Bulk Import', action: () => this.openBulkImportFromRoot() },
             { text: 'Paste', action: () => { this.selectedPath = ''; this.selectedItem = null; this.paste(); }, disabled: !this.clipboard },
             { separator: true },
             { text: 'Copy JSON to Clipboard', action: () => this.copyItemJSON(this.treeData) },
@@ -2594,6 +2596,256 @@ class JSONCreator {
                 showFloatingMessage('Root reset successfully!', 'success');
             }
         );
+    }
+
+    openBulkImportFromRoot() {
+        showConfirmationModal(
+            'Bulk Import to Root',
+            'Bulk importing directly to the project root is deprecated. Do you want to proceed anyway?',
+            () => {
+                this.selectedPath = '';
+                this.selectedItem = null;
+                this.openBulkImport();
+            }
+        );
+    }
+
+    openBulkImport() {
+        const modal = document.createElement('div');
+        modal.className = 'modal active extract-json-modal';
+        modal.style.zIndex = '20000';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h2>Bulk Import Cases</h2>
+                    <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div style="margin-bottom: 16px;">
+                        <label style="font-weight: 500; margin-bottom: 8px; display: block;">Algorithm Notation:</label>
+                        <div style="display: flex; gap: 16px;">
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="radio" name="bulkImportNotation" value="normal" checked>
+                                <span>Normal Notation</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="radio" name="bulkImportNotation" value="karnotation">
+                                <span>Karnotation</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 16px; padding: 12px; background: #f5f5f5; border-radius: 4px; font-size: 12px; color: #666;">
+                        <strong>Note:</strong> Apart from the top and bottom input, everything else will be configured according to the case template.
+                    </div>
+                    
+                    <div style="margin-bottom: 16px;">
+                        <input type="file" id="bulkImportFile" accept=".csv,.xlsx" style="display: none;">
+                        <div id="bulkImportDropZone" 
+                             style="width: 100%; min-height: 200px; background: #f9f9f9; border: 2px dashed #d0d0d0; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; color: #666; text-align: center; padding: 20px;">
+                            <div style="font-size: 48px; margin-bottom: 12px;">📊</div>
+                            <div style="font-size: 14px; font-weight: 500; margin-bottom: 4px;">Drop file here or click to choose</div>
+                            <div style="font-size: 12px; color: #999;">Supports .csv and .xlsx files</div>
+                            <div id="bulkImportFileName" style="margin-top: 12px; font-size: 13px; color: #0078d4; font-weight: 500;"></div>
+                        </div>
+                    </div>
+                    
+                    <button class="json-creator-btn" id="bulkImportProcessBtn" style="width: 100%; display: none;">Import Cases</button>
+                    <button class="json-creator-btn json-creator-btn-secondary" onclick="this.closest('.modal').remove()" style="margin-top: 12px; width: 100%;">Cancel</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        const fileInput = document.getElementById('bulkImportFile');
+        const dropZone = document.getElementById('bulkImportDropZone');
+        const fileNameDisplay = document.getElementById('bulkImportFileName');
+        const processBtn = document.getElementById('bulkImportProcessBtn');
+
+        let selectedFile = null;
+
+        const handleFile = (file) => {
+            if (file && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx'))) {
+                selectedFile = file;
+                fileNameDisplay.textContent = `Selected: ${file.name}`;
+                processBtn.style.display = 'block';
+            } else {
+                showFloatingMessage('Please select a valid CSV or XLSX file', 'error');
+            }
+        };
+
+        dropZone.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+
+        dropZone.ondragover = (e) => {
+            e.preventDefault();
+            dropZone.style.background = '#e0e0e0';
+        };
+        dropZone.ondragleave = () => {
+            dropZone.style.background = '#f9f9f9';
+        };
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.style.background = '#f9f9f9';
+            handleFile(e.dataTransfer.files[0]);
+        };
+
+        processBtn.onclick = () => {
+            const notation = document.querySelector('input[name="bulkImportNotation"]:checked').value;
+            this.processBulkImport(selectedFile, notation);
+            modal.remove();
+        };
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+    }
+
+    async processBulkImport(file, notation) {
+        try {
+            const data = await this.readFileData(file);
+            
+            if (!data || data.length === 0) {
+                showFloatingMessage('File is empty or invalid', 'error');
+                return;
+            }
+
+            const parent = this.getTargetFolder();
+            let successCount = 0;
+            let failCount = 0;
+
+            for (let i = 0; i < data.length; i++) {
+                const row = data[i];
+                
+                if (!row || row.length < 2) {
+                    failCount++;
+                    continue;
+                }
+
+                const caseName = String(row[0]).trim();
+                const algorithm = String(row[1]).trim();
+
+                if (!caseName || !algorithm) {
+                    failCount++;
+                    continue;
+                }
+
+                try {
+                    // Process algorithm based on notation
+                    let processedAlg = algorithm;
+
+                    // Convert karnotation if needed
+                    if (notation === 'karnotation') {
+                        if (typeof window.makeAPBLDocScrambleWCANotationPlease !== 'undefined') {
+                            processedAlg = window.makeAPBLDocScrambleWCANotationPlease(algorithm);
+                        } else {
+                            throw new Error('Karnotation converter not loaded');
+                        }
+                    }
+
+                    // Normalize
+                    if (typeof window.ScrambleNormalizer !== 'undefined') {
+                        processedAlg = window.ScrambleNormalizer.normalizeScramble(processedAlg);
+                    }
+
+                    // Invert
+                    if (typeof window.pleaseInvertThisScrambleForSolutionVisualization !== 'undefined') {
+                        processedAlg = window.pleaseInvertThisScrambleForSolutionVisualization(processedAlg);
+                    }
+
+                    // Hexify
+                    if (typeof window.sq1AlgToHex !== 'undefined') {
+                        const hexResult = window.sq1AlgToHex(processedAlg);
+
+                        // Create new case
+                        const uniqueName = this.getUniqueName(parent, caseName);
+                        
+                        // Use template if available
+                        if (this.caseTemplate) {
+                            parent[uniqueName] = JSON.parse(JSON.stringify(this.caseTemplate));
+                        } else {
+                            parent[uniqueName] = { ...this.DEFAULT_CASE };
+                        }
+
+                        parent[uniqueName].caseName = uniqueName;
+                        parent[uniqueName].inputTop = hexResult.tlHex;
+                        parent[uniqueName].inputBottom = hexResult.blHex;
+                        parent[uniqueName].alg = algorithm;
+
+                        successCount++;
+                    } else {
+                        throw new Error('Hexify converter not loaded');
+                    }
+                } catch (error) {
+                    console.error(`Failed to process case "${caseName}":`, error);
+                    failCount++;
+                }
+            }
+
+            // Auto-expand parent folder if not already expanded
+            if (this.selectedPath && !this.expandedFolders.has(this.selectedPath)) {
+                this.expandedFolders.add(this.selectedPath);
+            }
+
+            this.renderTree();
+
+            showFloatingMessage(
+                `Bulk import complete: ${successCount} cases imported, ${failCount} failed`,
+                failCount === 0 ? 'success' : 'info'
+            );
+        } catch (error) {
+            console.error('Bulk import error:', error);
+            showFloatingMessage('Failed to process file: ' + error.message, 'error');
+        }
+    }
+
+    async readFileData(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            
+            reader.onload = async (e) => {
+                try {
+                    const content = e.target.result;
+                    
+                    if (file.name.endsWith('.csv')) {
+                        // Use Papaparse for CSV
+                        if (typeof Papa !== 'undefined') {
+                            const parsed = Papa.parse(content, {
+                                skipEmptyLines: true
+                            });
+                            resolve(parsed.data);
+                        } else {
+                            // Fallback simple CSV parsing
+                            const lines = content.split('\n').filter(line => line.trim());
+                            const data = lines.map(line => line.split(',').map(cell => cell.trim()));
+                            resolve(data);
+                        }
+                    } else if (file.name.endsWith('.xlsx')) {
+                        // Use SheetJS for XLSX
+                        if (typeof XLSX !== 'undefined') {
+                            const workbook = XLSX.read(content, { type: 'binary' });
+                            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                            const data = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                            resolve(data);
+                        } else {
+                            reject(new Error('XLSX library not loaded'));
+                        }
+                    } else {
+                        reject(new Error('Unsupported file type'));
+                    }
+                } catch (error) {
+                    reject(error);
+                }
+            };
+            
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            
+            if (file.name.endsWith('.xlsx')) {
+                reader.readAsBinaryString(file);
+            } else {
+                reader.readAsText(file);
+            }
+        });
     }
 
     close() {
