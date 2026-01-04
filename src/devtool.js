@@ -472,7 +472,12 @@ renderTemplateEditor(title, subtitle, body) {
     }
 
     _loadRoot(rootName) {
+        if (!AppState.developingJSONs[rootName]) {
+            console.error(`Root "${rootName}" does not exist!`);
+            return;
+        }
         this.treeData = JSON.parse(JSON.stringify(AppState.developingJSONs[rootName]));
+        this.itemOrder = {}; // Reset item order when switching roots
         this.uiState.selectedPath = '';
         this.uiState.selectedItem = null;
         this.uiState.expandedFolders.clear();
@@ -1522,12 +1527,10 @@ _saveItemOrder(path, keys) {
         const container = document.getElementById('jsonCreatorTree');
         if (!container) return;
         
+        console.log('[renderTree] Rendering tree for root:', AppState.activeDevelopingJSON);
+        
         container.innerHTML = '';
         this.renderTreeNode(this.treeData, container, '', 0);
-        
-        // Auto-save after rendering
-        AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
-        saveDevelopingJSONs();
     }
 
     renderTreeNode(node, container, path, level) {
@@ -1667,6 +1670,7 @@ _saveItemOrder(path, keys) {
             this.uiState.expandedFolders.add(targetPath);
         }
 
+        this._saveCurrentRoot();
         this.renderTree();
         this._autoRenameAndFocus(targetPath, name);
     }
@@ -1699,6 +1703,7 @@ _saveItemOrder(path, keys) {
             this.uiState.expandedFolders.add(targetPath);
         }
 
+        this._saveCurrentRoot();
         this.renderTree();
         this._autoRenameAndFocus(targetPath, name);
     }
@@ -1774,6 +1779,7 @@ _saveItemOrder(path, keys) {
             this.uiState.expandedFolders.add(targetPath);
         }
 
+        this._saveCurrentRoot();
         this.renderTree();
         this._autoRenameAndFocus(targetPath, name);
     }
@@ -1805,6 +1811,7 @@ _saveItemOrder(path, keys) {
 
                 this.uiState.selectedPath = '';
                 this.uiState.selectedItem = null;
+                this._saveCurrentRoot();
                 this.renderTree();
             }
         );
@@ -1840,6 +1847,7 @@ _saveItemOrder(path, keys) {
         // Save the new order
         this._saveItemOrder(parentPath, keys);
 
+        this._saveCurrentRoot();
         this.renderTree();
     }
 
@@ -2111,9 +2119,39 @@ _saveItemOrder(path, keys) {
     }
 
     switchRoot(rootName) {
-        this._saveCurrentRoot();
+        console.log('=== SWITCH ROOT START ===');
+        console.log('Switching from:', AppState.activeDevelopingJSON, 'to:', rootName);
+        console.log('Current treeData before save:', JSON.stringify(this.treeData).substring(0, 100));
+        
+        // Save current root BEFORE switching
+        if (AppState.activeDevelopingJSON && this.treeData) {
+            console.log('Saving current root:', AppState.activeDevelopingJSON);
+            AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
+            console.log('Saved data:', JSON.stringify(AppState.developingJSONs[AppState.activeDevelopingJSON]).substring(0, 100));
+            saveDevelopingJSONs();
+        }
+        
+        // Switch to new root
         AppState.activeDevelopingJSON = rootName;
-        this._loadRoot(rootName);
+        console.log('New active root:', AppState.activeDevelopingJSON);
+        
+        // Load the new root (with fresh data from AppState)
+        if (!AppState.developingJSONs[rootName]) {
+            console.error(`Root "${rootName}" does not exist!`);
+            AppState.developingJSONs[rootName] = {};
+        }
+        
+        console.log('Loading data for root:', rootName);
+        console.log('Data from AppState:', JSON.stringify(AppState.developingJSONs[rootName]).substring(0, 100));
+        
+        this.treeData = JSON.parse(JSON.stringify(AppState.developingJSONs[rootName]));
+        console.log('Loaded treeData:', JSON.stringify(this.treeData).substring(0, 100));
+        
+        this.itemOrder = {}; // Reset item order
+        this.uiState.selectedPath = '';
+        this.uiState.selectedItem = null;
+        this.uiState.expandedFolders.clear();
+        this.expandAllFolders(this.treeData, '');
 
         // Load root-specific case template
         const templateKey = `caseTemplate_${rootName}`;
@@ -2127,6 +2165,8 @@ _saveItemOrder(path, keys) {
 
         const rootBtn = document.getElementById('rootSelectorBtn');
         if (rootBtn) rootBtn.textContent = rootName;
+        
+        console.log('=== SWITCH ROOT END ===');
     }
 
     openRootSelectorModal() {
@@ -2263,31 +2303,54 @@ _saveItemOrder(path, keys) {
             'Delete Root',
             `Delete root "${currentName}"? This cannot be undone.`,
             () => {
-                // CRITICAL: Save current root BEFORE deleting
-                if (AppState.activeDevelopingJSON !== currentName) {
-                    this._saveCurrentRoot();
-                }
+                console.log('=== DELETE ROOT START ===');
+                console.log('Deleting root:', currentName);
+                console.log('Active root before delete:', AppState.activeDevelopingJSON);
+                console.log('All roots before delete:', Object.keys(AppState.developingJSONs));
                 
-                // Create a NEW object without the deleted root (with deep copy)
-                const newDevelopingJSONs = {};
-                Object.keys(AppState.developingJSONs).forEach(key => {
-                    if (key !== currentName) {
-                        newDevelopingJSONs[key] = JSON.parse(JSON.stringify(AppState.developingJSONs[key]));
-                    }
-                });
+                const isDeletingActiveRoot = AppState.activeDevelopingJSON === currentName;
                 
-                AppState.developingJSONs = newDevelopingJSONs;
+                // Delete the root from AppState
+                delete AppState.developingJSONs[currentName];
+                
+                console.log('All roots after delete:', Object.keys(AppState.developingJSONs));
+                
                 saveDevelopingJSONs();
+                console.log('Saved to localStorage');
 
-                // If we deleted the active root, switch to another one
-                if (AppState.activeDevelopingJSON === currentName) {
-                    AppState.activeDevelopingJSON = Object.keys(AppState.developingJSONs)[0];
-                    this.switchRoot(AppState.activeDevelopingJSON);
-                } else {
-                    // Reload current root to ensure consistency
-                    this._loadRoot(AppState.activeDevelopingJSON);
+                // If we deleted the active root, switch to the first available one
+                if (isDeletingActiveRoot) {
+                    const firstRoot = Object.keys(AppState.developingJSONs)[0];
+                    console.log('Deleted active root, switching to:', firstRoot);
+                    
+                    // DON'T call switchRoot - it will try to save the deleted root!
+                    // Manually do what switchRoot does without saving first
+                    AppState.activeDevelopingJSON = firstRoot;
+                    
+                    this.treeData = JSON.parse(JSON.stringify(AppState.developingJSONs[firstRoot]));
+                    this.itemOrder = {};
+                    this.uiState.selectedPath = '';
+                    this.uiState.selectedItem = null;
+                    this.uiState.expandedFolders.clear();
+                    this.expandAllFolders(this.treeData, '');
+
+                    const templateKey = `caseTemplate_${firstRoot}`;
+                    const storedTemplate = localStorage.getItem(templateKey);
+                    this.caseTemplate = storedTemplate ? JSON.parse(storedTemplate) : null;
+
+                    this.setEditorState('welcome');
                     this.renderTree();
+                    this.renderEditor();
+
+                    const rootBtn = document.getElementById('rootSelectorBtn');
+                    if (rootBtn) rootBtn.textContent = firstRoot;
+                    
+                    console.log('Switched to:', firstRoot);
+                } else {
+                    console.log('Deleted non-active root, current root:', AppState.activeDevelopingJSON);
                 }
+                
+                console.log('=== DELETE ROOT END ===');
             }
         );
     }
@@ -2740,9 +2803,9 @@ _saveItemOrder(path, keys) {
                 AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
             }
 
-            saveDevelopingJSONs();
             this.uiState.expandedFolders.clear();
             this.expandAllFolders(this.treeData, '');
+            this._saveCurrentRoot();
             this.renderTree();
             showFloatingMessage('Data imported to root successfully!', 'success');
         } catch (error) {
@@ -2758,6 +2821,12 @@ _saveItemOrder(path, keys) {
                 this.treeData = {};
                 AppState.developingJSONs[AppState.activeDevelopingJSON] = {};
                 this.itemOrder = {};
+                
+                // Clear template for this root
+                const templateKey = `caseTemplate_${AppState.activeDevelopingJSON}`;
+                localStorage.removeItem(templateKey);
+                this.caseTemplate = null;
+                
                 saveDevelopingJSONs();
 
                 this.uiState.selectedPath = '';
