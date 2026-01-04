@@ -124,6 +124,7 @@ class JSONCreator {
         this.expandedFolders = new Set();
         this.contextMenu = null;
         this.caseTemplate = null;
+        this.itemOrder = {}; // Track insertion order per folder
 
         this.algorithmInputMode = localStorage.getItem('algorithmInputMode') === 'true' || false;
         this.algorithmNotationType = localStorage.getItem('algorithmNotationType') || 'normal';
@@ -367,6 +368,35 @@ class JSONCreator {
         pathParts.forEach(part => parent = parent[part]);
         return parent;
     }
+
+    _navigateToFolder(path) {
+    if (!path) return this.treeData;
+    const pathParts = path.split('/');
+    let current = this.treeData;
+    pathParts.forEach(part => current = current[part]);
+    return current;
+}
+
+_getOrderedKeys(node, path) {
+    const keys = Object.keys(node);
+    const orderKey = path || '__root__';
+    
+    // If we have stored order for this path, use it
+    if (this.itemOrder[orderKey]) {
+        const orderedKeys = this.itemOrder[orderKey].filter(k => keys.includes(k));
+        const newKeys = keys.filter(k => !orderedKeys.includes(k));
+        return [...orderedKeys, ...newKeys];
+    }
+    
+    // Store initial order
+    this.itemOrder[orderKey] = keys;
+    return keys;
+}
+
+_saveItemOrder(path, keys) {
+    const orderKey = path || '__root__';
+    this.itemOrder[orderKey] = keys;
+}
 
     _createFileImportModal(title, onProcess, context = 'general') {
         const fileIdPrefix = context === 'root' ? 'importRootData' : 'importData';
@@ -669,7 +699,12 @@ class JSONCreator {
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
                 <div class="json-creator-section">
-                    <h4>Top Layer</h4>
+                    <h4 style="display: flex; align-items: center; justify-content: space-between;">
+                        Top Layer
+                        <button class="json-creator-icon-btn" onclick="jsonCreator.resetShapeInput('top')" title="Reset Top Layer" style="display: inline-flex; align-items: center;">
+                            <img src="viz/reset.svg" width="14" height="14">
+                        </button>
+                    </h4>
                     <div class="json-creator-form-group">
                         <input type="text" maxlength="12" id="topLayerInput" value="${item.inputTop || 'RRRRRRRRRRRR'}" 
                                style="font-family: monospace; width: 100%; padding: 8px; background: #2d2d2d; border: 1px solid #404040; border-radius: 4px; color: #e0e0e0; display: none;">
@@ -678,7 +713,12 @@ class JSONCreator {
                 </div>
 
                 <div class="json-creator-section">
-                    <h4>Bottom Layer</h4>
+                    <h4 style="display: flex; align-items: center; justify-content: space-between;">
+                        Bottom Layer
+                        <button class="json-creator-icon-btn" onclick="jsonCreator.resetShapeInput('bottom')" title="Reset Bottom Layer" style="display: inline-flex; align-items: center;">
+                            <img src="viz/reset.svg" width="14" height="14">
+                        </button>
+                    </h4>
                     <div class="json-creator-form-group">
                         <input type="text" maxlength="12" id="bottomLayerInput" value="${item.inputBottom || 'RRRRRRRRRRRR'}" 
                                style="font-family: monospace; width: 100%; padding: 8px; background: #2d2d2d; border: 1px solid #404040; border-radius: 4px; color: #e0e0e0; display: none;">
@@ -1013,9 +1053,54 @@ class JSONCreator {
         if (actionsDiv) actionsDiv.style.display = 'none';
     }
 
+    resetShapeInput(layer) {
+    const target = this.editingTemplate || this.selectedItem;
+    if (!target) return;
+
+    const field = layer === 'top' ? 'inputTop' : 'inputBottom';
+    const currentValue = target[field];
+
+    // Determine what to reset to
+    let resetValue;
+    const templateValue = this.caseTemplate ? this.caseTemplate[field] : 'RRRRRRRRRRRR';
+    
+    // If current value equals template, reset to RRRRRRRRRRRR
+    // If current value is RRRRRRRRRRRR, reset to template
+    // Otherwise, reset to template
+    if (currentValue === templateValue) {
+        resetValue = 'RRRRRRRRRRRR';
+    } else if (currentValue === 'RRRRRRRRRRRR') {
+        resetValue = templateValue;
+    } else {
+        resetValue = templateValue;
+    }
+
+    target[field] = resetValue;
+
+    if (!this.editingTemplate) {
+        AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
+        saveDevelopingJSONs();
+    }
+
+    // Re-render the shape inputs
+    this._updateShapeInputs(target);
+
+    showFloatingMessage(`${layer === 'top' ? 'Top' : 'Bottom'} layer reset`, 'success');
+}
+
     _setupShapeInputListeners(item, isTemplate) {
         const topInput = document.getElementById('topLayerInput');
         const bottomInput = document.getElementById('bottomLayerInput');
+
+        // Re-setup interactive events for shape inputs after render
+        setTimeout(() => {
+            if (this.topState && window.InteractiveScrambleRenderer) {
+                window.InteractiveScrambleRenderer.setupInteractiveEvents(this.topState, 'topInteractive');
+            }
+            if (this.bottomState && window.InteractiveScrambleRenderer) {
+                window.InteractiveScrambleRenderer.setupInteractiveEvents(this.bottomState, 'bottomInteractive');
+            }
+        }, 100);
 
         const handleInputChange = (input, isTop) => {
             const value = input.value.toUpperCase().substring(0, 12);
@@ -1324,7 +1409,8 @@ class JSONCreator {
     }
 
     renderTreeNode(node, container, path, level) {
-        Object.keys(node).forEach(key => {
+        const keys = this._getOrderedKeys(node, path);
+        keys.forEach(key => {
             const item = node[key];
             if (typeof item !== 'object' || item === null) return;
 
@@ -1343,13 +1429,17 @@ class JSONCreator {
     // Close any open context menu immediately
     this.hideContextMenu();
 
+    // Always update selected path and item
+    this.selectedPath = path;
+    this.selectedItem = item;
+    localStorage.setItem('jsonCreator_lastSelectedPath', path);
+    localStorage.setItem('jsonCreator_lastSelectedRoot', AppState.activeDevelopingJSON);
+
     if (!item.caseName) {
         this.toggleFolder(path);
+        this.renderTree();
+        this.showFolderView(key);
     } else {
-        this.selectedPath = path;
-        this.selectedItem = item;
-        localStorage.setItem('jsonCreator_lastSelectedPath', path);
-        localStorage.setItem('jsonCreator_lastSelectedRoot', AppState.activeDevelopingJSON);
         this.renderTree();
         this.showCaseEditor(item, key);
     }
@@ -1376,10 +1466,14 @@ class JSONCreator {
         const newName = input.value.trim();
         if (!newName || newName === originalName) return;
 
+        const pathParts = path.split('/');
+        pathParts.pop();
+        const parentPath = pathParts.join('/');
         const parent = this._navigateToParent(path);
 
         if (parent[newName]) {
             showFloatingMessage('An item with this name already exists', 'error');
+            input.value = originalName;
             return;
         }
 
@@ -1391,11 +1485,38 @@ class JSONCreator {
             item.caseName = newName;
         }
 
+        // Update item order
+        const keys = this._getOrderedKeys(parent, parentPath);
+        const orderIndex = keys.indexOf(originalName);
+        if (orderIndex !== -1) {
+            keys[orderIndex] = newName;
+            this._saveItemOrder(parentPath, keys);
+        }
+
+        // Update selected path if this was the selected item
+        if (this.selectedPath === path) {
+            this.selectedPath = parentPath ? `${parentPath}/${newName}` : newName;
+            localStorage.setItem('jsonCreator_lastSelectedPath', this.selectedPath);
+        }
+
         this.renderTree();
     }
 
     newCase() {
-        const parent = this.getTargetFolder();
+        let parent, targetPath;
+        
+        if (this.selectedItem && this.selectedItem.caseName) {
+            // If a case is selected, add to its parent folder
+            const pathParts = this.selectedPath.split('/');
+            pathParts.pop();
+            targetPath = pathParts.join('/');
+            parent = targetPath ? this._navigateToFolder(targetPath) : this.treeData;
+        } else {
+            // If a folder is selected or nothing is selected
+            parent = this.getTargetFolder();
+            targetPath = this.selectedPath;
+        }
+
         const name = this.getUniqueName(parent, 'New Case');
 
         // Use template if available
@@ -1407,28 +1528,41 @@ class JSONCreator {
         }
 
         // Auto-expand parent folder if not already expanded
-        if (this.selectedPath && !this.expandedFolders.has(this.selectedPath)) {
-            this.expandedFolders.add(this.selectedPath);
+        if (targetPath && !this.expandedFolders.has(targetPath)) {
+            this.expandedFolders.add(targetPath);
         }
 
         this.renderTree();
 
-        this._autoRenameAndFocus(this.selectedPath, name);
+        this._autoRenameAndFocus(targetPath, name);
     }
 
     newFolder() {
-        const parent = this.getTargetFolder();
+        let parent, targetPath;
+        
+        if (this.selectedItem && this.selectedItem.caseName) {
+            // If a case is selected, add to its parent folder
+            const pathParts = this.selectedPath.split('/');
+            pathParts.pop();
+            targetPath = pathParts.join('/');
+            parent = targetPath ? this._navigateToFolder(targetPath) : this.treeData;
+        } else {
+            // If a folder is selected or nothing is selected
+            parent = this.getTargetFolder();
+            targetPath = this.selectedPath;
+        }
+
         const name = this.getUniqueName(parent, 'New Folder');
         parent[name] = {};
 
         // Auto-expand parent folder if not already expanded
-        if (this.selectedPath && !this.expandedFolders.has(this.selectedPath)) {
-            this.expandedFolders.add(this.selectedPath);
+        if (targetPath && !this.expandedFolders.has(targetPath)) {
+            this.expandedFolders.add(targetPath);
         }
 
         this.renderTree();
 
-        this._autoRenameAndFocus(this.selectedPath, name);
+        this._autoRenameAndFocus(targetPath, name);
     }
 
     getTargetFolder() {
@@ -1524,9 +1658,10 @@ class JSONCreator {
     moveItem(path, direction) {
         const pathParts = path.split('/');
         const itemName = pathParts.pop();
+        const parentPath = pathParts.join('/');
         const parent = pathParts.length > 0 ? this._navigateToParent(path) : this.treeData;
 
-        const keys = Object.keys(parent);
+        const keys = this._getOrderedKeys(parent, parentPath);
         const currentIndex = keys.indexOf(itemName);
 
         if (currentIndex === -1) return;
@@ -1537,18 +1672,11 @@ class JSONCreator {
             return;
         }
 
-        // Swap the items
+        // Swap in the order array
         [keys[currentIndex], keys[newIndex]] = [keys[newIndex], keys[currentIndex]];
 
-        // Rebuild the parent object with new order
-        const newParent = {};
-        keys.forEach(key => {
-            newParent[key] = parent[key];
-        });
-
-        // Replace parent contents
-        Object.keys(parent).forEach(key => delete parent[key]);
-        Object.assign(parent, newParent);
+        // Save the new order
+        this._saveItemOrder(parentPath, keys);
 
         this.renderTree();
     }
