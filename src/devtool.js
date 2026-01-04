@@ -1028,55 +1028,36 @@ _saveItemOrder(path, keys) {
 
         try {
             let processedAlg = algorithmText;
-            console.log('=== Algorithm Encoding Process ===');
-            console.log('Step 0 - Original Input:', algorithmText);
 
             // Process based on notation type
             if (this.algorithmNotationType === 'karnotation') {
-                console.log('Step 1 - Karnotation Mode: ENABLED');
                 if (typeof window.makeAPBLDocScrambleWCANotationPlease !== 'undefined') {
                     processedAlg = window.makeAPBLDocScrambleWCANotationPlease(algorithmText);
-                    console.log('Step 1 - After Karnotation Conversion:', processedAlg);
                 } else {
                     throw new Error('Karnotation converter not loaded');
                 }
-            } else {
-                console.log('Step 1 - Karnotation Mode: DISABLED (using normal notation)');
             }
 
             // Normalize
             if (typeof window.ScrambleNormalizer !== 'undefined') {
                 processedAlg = window.ScrambleNormalizer.normalizeScramble(processedAlg);
-                console.log('Step 2 - After Normalization:', processedAlg);
-            } else {
-                console.warn('ScrambleNormalizer not loaded, skipping normalization');
             }
 
             // Invert
             if (typeof window.pleaseInvertThisScrambleForSolutionVisualization !== 'undefined') {
                 processedAlg = window.pleaseInvertThisScrambleForSolutionVisualization(processedAlg);
-                console.log('Step 3 - After Inversion:', processedAlg);
-            } else {
-                console.warn('Inversion function not loaded, skipping inversion');
             }
 
             // Hexify
             if (typeof window.sq1AlgToHex !== 'undefined') {
-                console.log('Step 4 - Starting Hexification...');
                 const hexResult = window.sq1AlgToHex(processedAlg);
-                console.log('Step 4 - Hexification Result:', hexResult);
-                console.log('  - Top Layer Hex:', hexResult.tlHex);
-                console.log('  - Bottom Layer Hex:', hexResult.blHex);
                 this.tempHexState = hexResult;
 
                 // Live update visualization
                 this._updateVisualizationFromHex(hexResult);
-                console.log('Step 5 - Visualization Updated Successfully');
             } else {
                 throw new Error('Hexify converter not loaded');
             }
-            
-            console.log('=== Encoding Complete ===');
         } catch (error) {
             console.error('❌ Algorithm conversion error at some step:', error);
             console.error('Error details:', error.message);
@@ -1526,8 +1507,6 @@ _saveItemOrder(path, keys) {
     renderTree() {
         const container = document.getElementById('jsonCreatorTree');
         if (!container) return;
-        
-        console.log('[renderTree] Rendering tree for root:', AppState.activeDevelopingJSON);
         
         container.innerHTML = '';
         this.renderTreeNode(this.treeData, container, '', 0);
@@ -2118,22 +2097,15 @@ _saveItemOrder(path, keys) {
         this.openRunModal(item, key);
     }
 
-    switchRoot(rootName) {
-        console.log('=== SWITCH ROOT START ===');
-        console.log('Switching from:', AppState.activeDevelopingJSON, 'to:', rootName);
-        console.log('Current treeData before save:', JSON.stringify(this.treeData).substring(0, 100));
-        
+    switchRoot(rootName) {        
         // Save current root BEFORE switching
         if (AppState.activeDevelopingJSON && this.treeData) {
-            console.log('Saving current root:', AppState.activeDevelopingJSON);
             AppState.developingJSONs[AppState.activeDevelopingJSON] = JSON.parse(JSON.stringify(this.treeData));
-            console.log('Saved data:', JSON.stringify(AppState.developingJSONs[AppState.activeDevelopingJSON]).substring(0, 100));
             saveDevelopingJSONs();
         }
         
         // Switch to new root
         AppState.activeDevelopingJSON = rootName;
-        console.log('New active root:', AppState.activeDevelopingJSON);
         
         // Load the new root (with fresh data from AppState)
         if (!AppState.developingJSONs[rootName]) {
@@ -2141,11 +2113,7 @@ _saveItemOrder(path, keys) {
             AppState.developingJSONs[rootName] = {};
         }
         
-        console.log('Loading data for root:', rootName);
-        console.log('Data from AppState:', JSON.stringify(AppState.developingJSONs[rootName]).substring(0, 100));
-        
         this.treeData = JSON.parse(JSON.stringify(AppState.developingJSONs[rootName]));
-        console.log('Loaded treeData:', JSON.stringify(this.treeData).substring(0, 100));
         
         this.itemOrder = {}; // Reset item order
         this.uiState.selectedPath = '';
@@ -2165,8 +2133,6 @@ _saveItemOrder(path, keys) {
 
         const rootBtn = document.getElementById('rootSelectorBtn');
         if (rootBtn) rootBtn.textContent = rootName;
-        
-        console.log('=== SWITCH ROOT END ===');
     }
 
     openRootSelectorModal() {
@@ -2303,26 +2269,16 @@ _saveItemOrder(path, keys) {
             'Delete Root',
             `Delete root "${currentName}"? This cannot be undone.`,
             () => {
-                console.log('=== DELETE ROOT START ===');
-                console.log('Deleting root:', currentName);
-                console.log('Active root before delete:', AppState.activeDevelopingJSON);
-                console.log('All roots before delete:', Object.keys(AppState.developingJSONs));
-                
                 const isDeletingActiveRoot = AppState.activeDevelopingJSON === currentName;
                 
                 // Delete the root from AppState
                 delete AppState.developingJSONs[currentName];
-                
-                console.log('All roots after delete:', Object.keys(AppState.developingJSONs));
-                
+                 
                 saveDevelopingJSONs();
-                console.log('Saved to localStorage');
 
                 // If we deleted the active root, switch to the first available one
                 if (isDeletingActiveRoot) {
                     const firstRoot = Object.keys(AppState.developingJSONs)[0];
-                    console.log('Deleted active root, switching to:', firstRoot);
-                    
                     // DON'T call switchRoot - it will try to save the deleted root!
                     // Manually do what switchRoot does without saving first
                     AppState.activeDevelopingJSON = firstRoot;
@@ -2344,13 +2300,7 @@ _saveItemOrder(path, keys) {
 
                     const rootBtn = document.getElementById('rootSelectorBtn');
                     if (rootBtn) rootBtn.textContent = firstRoot;
-                    
-                    console.log('Switched to:', firstRoot);
-                } else {
-                    console.log('Deleted non-active root, current root:', AppState.activeDevelopingJSON);
                 }
-                
-                console.log('=== DELETE ROOT END ===');
             }
         );
     }

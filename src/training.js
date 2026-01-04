@@ -239,20 +239,14 @@ function initApp() {
 
 // Get initial timer display value
 function getInitialTimerDisplay() {
-    console.log('getInitialTimerDisplay called');
-    console.log('activeTrainingJSON:', AppState.activeTrainingJSON);
-    console.log('sessionTimes:', AppState.sessionTimes);
-    
+
     if (AppState.activeTrainingJSON && AppState.sessionTimes[AppState.activeTrainingJSON]) {
         const times = AppState.sessionTimes[AppState.activeTrainingJSON];
-        console.log('times for current algset:', times);
         if (times.length > 0) {
             const lastTime = times[times.length - 1].time;
-            console.log('lastTime:', lastTime);
             return lastTime.toFixed(3);
         }
     }
-    console.log('returning 0.000');
     return '0.000';
 }
 
@@ -357,8 +351,6 @@ function generateNewScramble() {
                 }
             } catch (solverError) {
                 attempts++;
-                console.log(`Solver attempt ${attempts} failed:`, solverError.message);
-                
                 if (solverError.message && solverError.message.includes("Cannot read properties of undefined (reading 'shift')")) {
                     if (attempts < maxAttempts) {
                         continue;
@@ -551,27 +543,19 @@ function stopTimer() {
         const seconds = (AppState.timerElapsed / 1000).toFixed(3);
         display.textContent = seconds;
     }
-    
-    console.log('stopTimer called');
-    console.log('timerElapsed:', AppState.timerElapsed);
-    
+
     // Save time to session
     if (AppState.activeTrainingJSON && AppState.currentScramble) {
         if (!AppState.sessionTimes[AppState.activeTrainingJSON]) {
             AppState.sessionTimes[AppState.activeTrainingJSON] = [];
         }
         const timeInSeconds = AppState.timerElapsed / 1000;
-        console.log('saving time:', timeInSeconds, 'for case:', AppState.currentScramble.caseName);
         AppState.sessionTimes[AppState.activeTrainingJSON].push({
             caseName: AppState.currentScramble.caseName,
             time: timeInSeconds
         });
-        console.log('sessionTimes after push:', AppState.sessionTimes);
         saveSessionTimes();
-    } else {
-        console.log('NOT saving time - activeTrainingJSON:', AppState.activeTrainingJSON, 'currentScramble:', AppState.currentScramble);
     }
-    
     generateNewScramble();
 }
 
@@ -591,8 +575,6 @@ function updateTimerDisplay() {
     const display = document.getElementById('timerDisplay');
     if (!display) return;
 
-    console.log('updateTimerDisplay called, timerState:', AppState.timerState);
-
     if (AppState.timerState === 'preparing') {
         const holdDuration = Date.now() - timerHoldStartTime;
         const requiredDuration = AppState.settings.startingCueDuration * 1000;
@@ -609,25 +591,18 @@ function updateTimerDisplay() {
         const seconds = (AppState.timerElapsed / 1000).toFixed(3);
         display.textContent = seconds;
     } else if (AppState.timerState === 'idle') {
-        console.log('idle state - checking for last time');
-        console.log('activeTrainingJSON:', AppState.activeTrainingJSON);
-        console.log('sessionTimes:', AppState.sessionTimes);
-        
+
         display.className = 'timer-display';
         // Show last time from session
         if (AppState.activeTrainingJSON && AppState.sessionTimes[AppState.activeTrainingJSON]) {
             const times = AppState.sessionTimes[AppState.activeTrainingJSON];
-            console.log('times array:', times);
             if (times.length > 0) {
                 const lastTime = times[times.length - 1].time;
-                console.log('setting display to lastTime:', lastTime);
                 display.textContent = lastTime.toFixed(3);
             } else {
-                console.log('times array is empty');
                 display.textContent = '0.000';
             }
         } else {
-            console.log('no activeTrainingJSON or no sessionTimes for it');
             display.textContent = '0.000';
         }
     }

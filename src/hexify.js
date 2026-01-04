@@ -2,45 +2,31 @@
 // Works in both Node.js and browser environments
 
 function sq1AlgToHex(scramble) {
-  console.log('  [Hexify] Starting with scramble:', scramble);
-  
   // Initial solved state
   let tlHex = '011233455677';
   let blHex = '998bbaddcffe';
-  console.log('  [Hexify] Initial state - Top:', tlHex, 'Bottom:', blHex);
-  
+
   // Parse the scramble string
   const moves = parseScramble(scramble);
-  console.log('  [Hexify] Parsed moves:', JSON.stringify(moves, null, 2));
-  
+
   // Apply each move
   for (let i = 0; i < moves.length; i++) {
     const move = moves[i];
-    console.log(`  [Hexify] Move ${i + 1}/${moves.length}:`, move);
-    
+
     if (move.type === 'twist') {
-      console.log('    - Performing TWIST');
-      console.log('    - Before: Top:', tlHex, 'Bottom:', blHex);
       const result = twist(tlHex, blHex);
       tlHex = result.tlHex;
       blHex = result.blHex;
-      console.log('    - After: Top:', tlHex, 'Bottom:', blHex);
     } else if (move.type === 'turn') {
-      console.log(`    - Performing TURN: Top by ${move.top}, Bottom by ${move.bottom}`);
-      console.log('    - Before: Top:', tlHex, 'Bottom:', blHex);
       tlHex = cycleLeft(tlHex, move.top);
       blHex = cycleLeft(blHex, move.bottom);
-      console.log('    - After: Top:', tlHex, 'Bottom:', blHex);
     }
   }
-  
-  console.log('  [Hexify] Final state - Top:', tlHex, 'Bottom:', blHex);
   return { tlHex, blHex };
 }
 
 function parseScramble(scramble) {
   const moves = [];
-  console.log('  [Parser] Raw scramble input:', scramble);
   
   let i = 0;
   while (i < scramble.length) {
@@ -49,7 +35,6 @@ function parseScramble(scramble) {
     // Check for slash - it's a twist move
     if (char === '/' || char === '\\') {
       moves.push({ type: 'twist' });
-      console.log(`  [Parser] Found TWIST at position ${i}`);
       i++;
     }
     // Check for opening parenthesis or digit/minus (start of turn move)
@@ -86,7 +71,6 @@ function parseScramble(scramble) {
       if (cleaned.includes(',')) {
         const [top, bottom] = cleaned.split(',').map(n => parseInt(n.trim()));
         moves.push({ type: 'turn', top, bottom });
-        console.log(`  [Parser] Found TURN (${top},${bottom}) from position ${startPos} to ${i}`);
       }
     }
     // Skip whitespace
@@ -98,8 +82,6 @@ function parseScramble(scramble) {
       i++;
     }
   }
-  
-  console.log('  [Parser] Final parsed moves:', JSON.stringify(moves, null, 2));
   return moves;
 }
 
@@ -128,12 +110,6 @@ function cycleLeft(hex, places) {
 function runExample() {
   const scramble = '(1,0)/ (3,3)/ (6,0)/ (-3,0)/ (-1,-4)/ (0,-3)/ (6,-2)/ (-3,-3)/ (-2,-1)/ (6,-4)/ (0,-1)';
   const result = sq1AlgToHex(scramble);
-  
-  console.log('Scramble:', scramble);
-  console.log('Result:');
-  console.log('  tlHex:', result.tlHex);
-  console.log('  blHex:', result.blHex);
-  
   return result;
 }
 
