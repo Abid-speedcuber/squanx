@@ -942,7 +942,7 @@ function showPieceSelectionModal(state, position, layer, isCornerZone, x, y, con
                 e.preventDefault();
                 e.stopPropagation();
                 state.updatePiece(position, layer, piece);
-                closePieceModal();
+                window.closePieceModal();
                 
                 const container = document.getElementById(containerId);
                 if (container) {
@@ -1010,7 +1010,7 @@ function showPieceSelectionModal(state, position, layer, isCornerZone, x, y, con
     setTimeout(() => {
         const closeOnOutsideClick = (e) => {
             if (!modal.contains(e.target)) {
-                closePieceModal();
+                window.closePieceModal();
                 document.removeEventListener('click', closeOnOutsideClick);
             }
         };
@@ -1039,17 +1039,15 @@ if (typeof window !== 'undefined') {
     };
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        InteractiveScrambleState,
-        createInteractiveSVG,
-        createMiniPieceSVG,
-        getUsedPieces,
-        createPieceDefinitions,
-        setupInteractiveEvents,
-        createPieceSelectionModal,
-        DEFAULT_COLOR_SCHEME,
-        EDGE_PIECES,
-        CORNER_PIECES
-    };
-}
+export {
+    CORNER_PIECES,
+    DEFAULT_COLOR_SCHEME,
+    EDGE_PIECES,
+    InteractiveScrambleState,
+    createInteractiveSVG,
+    createMiniPieceSVG,
+    createPieceDefinitions,
+    createPieceSelectionModal,
+    getUsedPieces,
+    setupInteractiveEvents
+};

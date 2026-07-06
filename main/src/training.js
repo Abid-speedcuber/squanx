@@ -1,3 +1,5 @@
+import { ensureFeatureModules, openDevtoolFullscreen } from './moduleLoader.js';
+
 // Application State
 const AppState = {
     selectedCases: [],
@@ -216,7 +218,7 @@ function applyTheme() {
 }
 
 // Initialize app
-function initApp() {
+async function initApp() {
     loadTrainingJSONs();
     loadDevelopingJSONs();
     loadSelectedCases();
@@ -226,14 +228,13 @@ function initApp() {
     
     const lastScreen = loadLastScreen();
     if (lastScreen === 'jsonCreator') {
-        showJsonCreatorFullscreen();
+        await openDevtoolFullscreen();
+        return 'devtool';
     } else {
         saveLastScreen('training');
         renderApp();
         setupEventListeners();
-        if (AppState.selectedCases.length > 0) {
-            generateNewScramble();
-        }
+        return 'trainer';
     }
 }
 
@@ -309,7 +310,7 @@ function generateVisualization(hexState) {
 }
 
 // Generate new scramble from selected cases
-function generateNewScramble() {
+async function generateNewScramble() {
     if (AppState.selectedCases.length === 0) {
         AppState.currentScramble = null;
         renderApp();
@@ -319,6 +320,8 @@ function generateNewScramble() {
     const randomCase = AppState.selectedCases[Math.floor(Math.random() * AppState.selectedCases.length)];
     
     try {
+        const { generateHexState } = (await ensureFeatureModules()).hexState;
+
         // Config is already in correct format from JSON creator
         const config = {
             topLayer: randomCase.inputTop,
@@ -386,9 +389,11 @@ function setupEventListeners() {
     document.getElementById('selectAlgsetBtn').addEventListener('click', openAlgsetSelectorModal);
     document.getElementById('prevScrambleBtn').addEventListener('click', () => {
         // For now, just generate a new scramble
-        generateNewScramble();
+        void generateNewScramble();
     });
-    document.getElementById('nextScrambleBtn').addEventListener('click', generateNewScramble);
+    document.getElementById('nextScrambleBtn').addEventListener('click', () => {
+        void generateNewScramble();
+    });
     document.getElementById('menuBtn').addEventListener('click', openMenuModal);
 
     const timerZone = document.getElementById('timerZone');
@@ -556,7 +561,7 @@ function stopTimer() {
         });
         saveSessionTimes();
     }
-    generateNewScramble();
+    void generateNewScramble();
 }
 
 function updateTimer() {
@@ -949,7 +954,7 @@ window.saveCaseSelection = function () {
     saveSelectedCases();
     document.querySelector('.modal').remove();
     document.getElementById('caseCount').textContent = `${AppState.selectedCases.length} case(s) selected`;
-    generateNewScramble();
+    void generateNewScramble();
 };
 
 // Settings modal
@@ -1226,3 +1231,21 @@ function openScrambleDetailModal() {
         }
     });
 }
+
+Object.assign(window, {
+    initApp,
+    openSettingsModal,
+    openAboutModal,
+    openScrambleDetailModal
+});
+
+export {
+    AppState,
+    DEFAULT_ALGSET,
+    initApp,
+    renderApp,
+    generateNewScramble,
+    setupEventListeners,
+    saveDevelopingJSONs,
+    saveLastScreen
+};

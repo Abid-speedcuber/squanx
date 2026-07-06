@@ -247,9 +247,4 @@ if (typeof window !== 'undefined') {
     window.makeAPBLDocScrambleWCANotationPlease = makeAPBLDocScrambleWCANotationPlease;
 }
 
-// Node.js CLI support
-if (typeof process !== 'undefined' && process.argv) {
-    const args = process.argv.slice(2);
-    if (args[0]) {
-    }
-}
+export { makeAPBLDocScrambleWCANotationPlease };

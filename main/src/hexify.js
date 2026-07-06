@@ -150,11 +150,6 @@ function pleaseInvertThisScrambleForSolutionVisualization(scrambleString) {
   return inverted.join('/');
 }
 
-// Export for Node.js or expose globally for browser
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { sq1AlgToHex, parseScramble, twist, cycleLeft };
-}
-
 // Browser: expose to window
 if (typeof window !== 'undefined') {
   window.sq1AlgToHex = sq1AlgToHex;
@@ -162,7 +157,11 @@ if (typeof window !== 'undefined') {
   window.pleaseInvertThisScrambleForSolutionVisualization = pleaseInvertThisScrambleForSolutionVisualization;
 }
 
-// Run example if in Node.js and executed directly
-if (typeof require !== 'undefined' && require.main === module) {
-  runExample();
-}
+export {
+  cycleLeft,
+  parseScramble,
+  pleaseInvertThisScrambleForSolutionVisualization,
+  runExample,
+  sq1AlgToHex,
+  twist
+};

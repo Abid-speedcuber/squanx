@@ -895,13 +895,10 @@ const testCases = [
     }
 ];
 
-// Export for use as module
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { generateHexState, testCases };
-}
-
 // Export for browser
 if (typeof window !== 'undefined') {
     window.generateHexState = generateHexState;
     window.testCases = testCases;
 }
+
+export { generateHexState, testCases };

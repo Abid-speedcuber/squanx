@@ -437,11 +437,12 @@ if (typeof window !== 'undefined') {
     };
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        normalizeScramble,
-        checkForVariables,
-        expandVariablesRecursive,
-        normalizeScrambleFormat
-    };
-}
+export {
+    checkForVariables,
+    expandVariablesRecursive,
+    normalizeInput,
+    normalizeScramble,
+    normalizeScrambleFormat,
+    parseSets,
+    simplifyScramble
+};

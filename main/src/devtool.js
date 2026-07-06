@@ -1,3 +1,6 @@
+import { ensureFeatureModules, ensureXlsxScript } from './moduleLoader.js';
+import { AppState, DEFAULT_ALGSET, generateNewScramble, renderApp, saveDevelopingJSONs, saveLastScreen, setupEventListeners } from './training.js';
+
 //Every Update to the state should instantly render to ensure snappyness of the app.
 
 // Utility Functions
@@ -1017,7 +1020,7 @@ _saveItemOrder(path, keys) {
         }
     }
 
-    handleAlgorithmInputChange(algorithmText) {
+    async handleAlgorithmInputChange(algorithmText) {
         if (!algorithmText.trim()) {
             this.clearTemporaryAlgorithmState();
             this._updateShapeInputs(this.uiState.selectedItem || this.editingTemplate);
@@ -1027,6 +1030,7 @@ _saveItemOrder(path, keys) {
         this.tempAlgorithmInput = algorithmText;
 
         try {
+            await ensureFeatureModules();
             let processedAlg = algorithmText;
 
             // Process based on notation type
@@ -2440,6 +2444,7 @@ _saveItemOrder(path, keys) {
     }
 
     async generateScrambles(jsonData, modal, isStopped) {
+        const { generateHexState } = (await ensureFeatureModules()).hexState;
         const resultsContainer = document.getElementById('runResultsContainer');
         const progressBar = document.getElementById('runProgressBar');
         const progressText = document.getElementById('runProgressText');
@@ -2897,6 +2902,7 @@ _saveItemOrder(path, keys) {
 
     async processBulkImport(file, notation) {
         try {
+            await ensureFeatureModules();
             const data = await this.readFileData(file);
             
             if (!data || data.length === 0) {
@@ -2994,6 +3000,10 @@ _saveItemOrder(path, keys) {
     }
 
     async readFileData(file) {
+        if (file.name.endsWith('.xlsx')) {
+            await ensureXlsxScript();
+        }
+
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             
@@ -3059,7 +3069,7 @@ _saveItemOrder(path, keys) {
                 renderApp();
                 setupEventListeners();
                 if (AppState.selectedCases.length > 0) {
-                    generateNewScramble();
+                    void generateNewScramble();
                 }
             }
         );
@@ -3167,9 +3177,18 @@ let jsonCreator = new JSONCreator();
 
 function showJsonCreatorFullscreen() {
     jsonCreator = new JSONCreator();
+    window.jsonCreator = jsonCreator;
     jsonCreator.show();
 }
 
 function closeJsonCreator() {
     jsonCreator.close();
 }
+
+Object.assign(window, {
+    jsonCreator,
+    showJsonCreatorFullscreen,
+    closeJsonCreator
+});
+
+export { JSONCreator, closeJsonCreator, showJsonCreatorFullscreen };

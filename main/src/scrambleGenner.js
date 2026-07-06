@@ -1440,34 +1440,4 @@ if (typeof window !== 'undefined') {
     };
 }
 
-// ============================================================================
-// CLI USAGE
-// ============================================================================
-
-if (typeof require !== 'undefined' && require.main === module) {
-    const hexInput = process.argv[2];
-    
-    if (!hexInput) {
-        process.exit(1);
-    }
-    
-    try {
-        const solution = solveSquare1(hexInput);
-    } catch (error) {
-        console.error('Error:', error.message);
-        process.exit(1);
-    }
-}
-
-// ============================================================================
-// EXPORTS (for use as module)
-// ============================================================================
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = {
-        solveSquare1,
-        parseHexFormat,
-        SqCubie,
-        getShapeIndexAndParity
-    };
-}
+export { SqCubie, getShapeIndexAndParity, parseHexFormat, solveSquare1 };

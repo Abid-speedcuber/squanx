@@ -485,10 +485,6 @@ function gimmeCornerColorsAsHexCodesPlease(hexChar, isThisBottomLayer, colorSche
   let rightColor = convertColorLetterToHexCodePlease(colorTriplet.right, colorScheme);
   const topColor = convertColorLetterToHexCodePlease(colorTriplet.top, colorScheme);
   
-  if (isThisBottomLayer) {
-    [leftColor, rightColor] = [leftColor, rightColor];
-  }
-  
   return { top: topColor, left: leftColor, right: rightColor };
 }
 
@@ -900,12 +896,9 @@ if (typeof window !== 'undefined') {
   };
 }
 
-// For module systems (Node.js, bundlers, etc.)
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    visualizeFromHexCodePlease,
-    visualizeFromScrambleNotationPlease,
-    visualizeFromSolutionNotationPlease,
-    visualizeCubeShapeOutlinesPlease
-  };
-}
+export {
+  visualizeCubeShapeOutlinesPlease,
+  visualizeFromHexCodePlease,
+  visualizeFromScrambleNotationPlease,
+  visualizeFromSolutionNotationPlease
+};
