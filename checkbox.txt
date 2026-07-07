@@ -1,0 +1,697 @@
+- [x] Devtool opens from the trainer without downloading devtool code before it is requested.
+- [x] Devtool preserves the existing lazy-loaded feature module contract.
+- [x] Devtool root element is created only once per open session.
+- [x] Devtool removes stale fullscreen roots before mounting a new one.
+- [x] Devtool saves the previous trainer screen marker when it opens.
+- [x] Devtool restores the trainer screen marker when it closes.
+- [x] Devtool close action asks for confirmation before leaving.
+- [x] Devtool close action saves active root data before leaving.
+- [x] Devtool close action removes the fullscreen DOM node.
+- [x] Devtool close action re-renders the trainer shell after leaving.
+- [x] Devtool close action reattaches trainer event listeners after leaving.
+- [x] Devtool close action generates a trainer scramble when selected cases exist.
+- [x] Devtool shell has a stable fullscreen layout.
+- [x] Devtool shell has a top bar.
+- [x] Devtool shell has a left toolbar.
+- [x] Devtool shell has a sidebar tree.
+- [x] Devtool shell has an editor workspace.
+- [x] Devtool shell has a root selector in the top bar.
+- [x] Devtool top bar uses the squanx name.
+- [x] Devtool top bar avoids legacy SquanGo product naming.
+- [x] Devtool left toolbar exposes new case.
+- [x] Devtool left toolbar exposes new folder.
+- [x] Devtool left toolbar exposes copy.
+- [x] Devtool left toolbar exposes paste.
+- [x] Devtool left toolbar exposes delete.
+- [x] Devtool left toolbar exposes extract JSON.
+- [x] Devtool left toolbar exposes run JSON.
+- [x] Devtool left toolbar exposes extra tools.
+- [x] Devtool left toolbar exposes close.
+- [x] Devtool sidebar can be hidden or shown.
+- [x] Devtool sidebar hidden state does not break editor width.
+- [x] Devtool editor shows a welcome state when nothing editable is selected.
+- [x] Devtool editor shows a case state when a case is selected.
+- [x] Devtool editor shows a template state when editing the case template.
+- [x] Devtool state is represented as a single plain object.
+- [x] Devtool state separates persisted algset roots from transient UI state.
+- [x] Devtool state separates selected tree path from editor tab state.
+- [x] Devtool state separates modal state from editor state.
+- [x] Devtool state separates context menu state from modal state.
+- [x] Devtool state stores active root name explicitly.
+- [x] Devtool state stores root tree data explicitly.
+- [x] Devtool state stores selected path explicitly.
+- [x] Devtool state stores expanded folders explicitly.
+- [x] Devtool state stores clipboard item explicitly.
+- [ ] Devtool state stores clipboard operation explicitly.
+- [x] Devtool state stores case template explicitly.
+- [x] Devtool state stores current editor mode explicitly.
+- [x] Devtool state stores current case tab explicitly.
+- [x] Devtool state stores current template tab explicitly.
+- [x] Devtool state stores algorithm input mode explicitly.
+- [x] Devtool state stores algorithm notation type explicitly.
+- [x] Devtool state stores temporary algorithm conversion result explicitly.
+- [x] Devtool state stores temporary algorithm source text explicitly.
+- [x] Devtool state stores active modal type explicitly.
+- [x] Devtool state stores active context menu coordinates explicitly.
+- [x] Devtool state stores active context menu target explicitly.
+- [ ] Devtool state stores pending file import mode explicitly.
+- [ ] Devtool state stores run progress explicitly.
+- [ ] Devtool state stores run cancellation explicitly.
+- [ ] Devtool state changes happen through named actions.
+- [ ] Devtool actions never directly construct large DOM sections.
+- [ ] Devtool render functions do not mutate data except through actions.
+- [x] Devtool storage functions do not touch DOM.
+- [x] Devtool DOM functions do not read localStorage directly.
+- [x] Devtool feature modules are awaited before shape or algorithm conversions use them.
+- [x] Devtool XLSX library is awaited only for XLSX import.
+- [x] Devtool boot loads developing JSONs from trainer AppState.
+- [x] Devtool boot creates a default root when no roots exist.
+- [x] Devtool boot chooses the active root from AppState.
+- [x] Devtool boot falls back to default root when active root is missing.
+- [x] Devtool boot clones root data before editing it.
+- [x] Devtool boot expands folders on initial render.
+- [x] Devtool boot reads the last selected root from localStorage.
+- [x] Devtool boot reads the last selected path from localStorage.
+- [x] Devtool boot validates last selected path before restoring it.
+- [ ] Devtool boot ignores stale last selected path when the root differs.
+- [ ] Devtool boot selects the first case when no saved selection is valid.
+- [ ] Devtool boot keeps welcome editor when there are no cases.
+- [ ] Devtool root save clones current tree into AppState.
+- [ ] Devtool root save calls the shared developing JSON save helper.
+- [ ] Devtool root save does not save when no active root exists.
+- [ ] Devtool root switch saves the old root first.
+- [ ] Devtool root switch updates AppState active root.
+- [ ] Devtool root switch creates an empty root if target root is missing.
+- [ ] Devtool root switch reloads tree data from AppState.
+- [ ] Devtool root switch clears selected path.
+- [ ] Devtool root switch clears selected item.
+- [ ] Devtool root switch resets editor to welcome.
+- [ ] Devtool root switch reloads root-specific template.
+- [ ] Devtool root switch re-expands folders.
+- [ ] Devtool root switch re-renders tree.
+- [ ] Devtool root switch re-renders editor.
+- [ ] Devtool root switch updates root selector label.
+- [ ] Root selector opens beside the root selector button.
+- [x] Root selector closes when clicked outside.
+- [ ] Root selector does not close immediately from the opening click.
+- [ ] Root selector lists every developing root.
+- [ ] Root selector marks the active root.
+- [ ] Root selector supports choosing a root.
+- [ ] Root selector supports context menu on root rows.
+- [ ] Root selector context menu supports rename.
+- [ ] Root selector context menu supports delete.
+- [ ] Root selector delete is disabled when only one root exists.
+- [ ] Root selector supports creating a root.
+- [ ] Add root prompt focuses the input.
+- [ ] Add root prompt selects existing text when provided.
+- [ ] Add root prompt confirms on Enter.
+- [ ] Add root prompt cancels on Escape.
+- [ ] Add root prompt closes on outside click.
+- [ ] Add root rejects empty names.
+- [ ] Add root rejects duplicate names.
+- [ ] Add root creates an empty root object.
+- [ ] Add root saves developing JSONs.
+- [ ] Add root switches to the new root.
+- [ ] Rename root prompt pre-fills current root name.
+- [ ] Rename root ignores unchanged name.
+- [ ] Rename root rejects duplicate names.
+- [ ] Rename root preserves root data.
+- [ ] Rename root preserves active root when renamed root was active.
+- [ ] Rename root deletes the old key.
+- [ ] Rename root saves developing JSONs.
+- [ ] Rename root updates selector label when active root is renamed.
+- [ ] Delete root asks for confirmation.
+- [ ] Delete root refuses to delete the last root.
+- [ ] Delete root removes root data from AppState.
+- [ ] Delete root removes root-specific template.
+- [ ] Delete root saves developing JSONs.
+- [ ] Delete active root switches to first remaining root.
+- [ ] Delete inactive root keeps current active root.
+- [ ] Delete root closes selector modal.
+- [ ] Tree renders every root child.
+- [ ] Tree treats objects with caseName as cases.
+- [ ] Tree treats objects without caseName as folders.
+- [ ] Tree ignores null children.
+- [ ] Tree ignores primitive children.
+- [ ] Tree preserves object insertion order.
+- [ ] Tree keeps custom item order when present.
+- [ ] Tree displays folder icon for folders.
+- [ ] Tree displays case icon for cases.
+- [ ] Tree displays folder expand indicator.
+- [ ] Tree displays indentation by depth.
+- [ ] Tree selection highlight follows selected path.
+- [ ] Tree click selects cases.
+- [ ] Tree click opens folders.
+- [ ] Tree click toggles folders when expand icon is clicked.
+- [ ] Tree double-click or rename trigger can rename item.
+- [ ] Tree context menu opens on right click.
+- [ ] Tree context menu opens on long press.
+- [ ] Tree long press is cancelled by touch move.
+- [ ] Tree long press is cancelled by touch end.
+- [ ] Tree long press does not also select when context menu opens.
+- [ ] Tree empty area context menu opens root actions.
+- [ ] Tree empty area click clears selection only when intended.
+- [ ] Tree scroll closes context menu when tree is scrollable.
+- [ ] Tree non-scrollable state does not install needless scroll listeners.
+- [x] Tree context menu closes on outside click.
+- [ ] Tree context menu clamps to viewport bottom.
+- [ ] Tree context menu clamps to viewport right edge.
+- [ ] Tree context menu clamps to viewport top edge.
+- [ ] Tree context menu clamps to viewport left edge.
+- [ ] Tree context menu removes old menu before opening a new one.
+- [ ] Tree context menu cleans document click listener after close.
+- [ ] Tree context menu cleans scroll listener after close.
+- [ ] Tree folder expand state persists during render.
+- [ ] Tree folder expand state is stored as paths.
+- [ ] Tree folder expand state updates through an action.
+- [ ] Tree path separator remains compatible with existing saved paths.
+- [ ] Tree paths are escaped or encoded safely for DOM data attributes.
+- [ ] Tree path lookup supports nested folders.
+- [ ] Tree path lookup returns root for empty path.
+- [ ] Tree parent lookup supports root children.
+- [ ] Tree parent lookup supports nested children.
+- [ ] Select case updates selected path.
+- [ ] Select case updates selected item reference.
+- [ ] Select case stores last selected path in localStorage.
+- [ ] Select case stores last selected root in localStorage.
+- [ ] Select case opens case editor.
+- [ ] Select case resets current case tab to shape.
+- [ ] Select folder updates selected path.
+- [ ] Select folder updates selected item reference.
+- [ ] Select folder opens folder editor or welcome state.
+- [ ] Select folder can be target for new child items.
+- [ ] Navigate to parent returns root for root path.
+- [ ] Navigate to parent returns containing folder for nested path.
+- [ ] New case targets selected folder.
+- [ ] New case targets parent folder when selected item is a case.
+- [ ] New case targets root when nothing is selected.
+- [ ] New case uses unique default name.
+- [ ] New case copies the active case template when one exists.
+- [ ] New case falls back to default case when no template exists.
+- [ ] New case sets caseName equal to object key.
+- [ ] New case expands target folder.
+- [ ] New case selects the newly created case.
+- [ ] New case opens the case editor.
+- [ ] New case saves root data.
+- [ ] New case focuses rename input after creation.
+- [ ] New folder targets selected folder.
+- [ ] New folder targets parent folder when selected item is a case.
+- [ ] New folder targets root when nothing is selected.
+- [ ] New folder uses unique default name.
+- [ ] New folder creates an empty object.
+- [ ] New folder expands target folder.
+- [ ] New folder selects the newly created folder.
+- [ ] New folder saves root data.
+- [ ] New folder focuses rename input after creation.
+- [ ] Unique name returns base name when unused.
+- [ ] Unique name appends incrementing number when base exists.
+- [ ] Unique name avoids collisions with folders.
+- [ ] Unique name avoids collisions with cases.
+- [ ] Rename item starts inline without layout jump.
+- [ ] Rename item selects the current text.
+- [ ] Rename item confirms on blur.
+- [ ] Rename item confirms on Enter.
+- [ ] Rename item cancels on Escape.
+- [ ] Rename item rejects empty names.
+- [ ] Rename item ignores unchanged names.
+- [ ] Rename item rejects duplicate sibling names.
+- [ ] Rename item updates object key.
+- [ ] Rename item preserves child object data.
+- [ ] Rename case updates caseName field.
+- [ ] Rename item updates selected path when selected item is renamed.
+- [ ] Rename item updates editor item name when editor target is renamed.
+- [ ] Rename item updates item order entry.
+- [ ] Rename item saves root data.
+- [ ] Rename item re-renders tree.
+- [ ] Rename item re-renders editor when active editor item changed.
+- [ ] Copy action is disabled when nothing is selected.
+- [ ] Copy action deep clones selected item.
+- [ ] Copy action records clipboard operation.
+- [ ] Copy action shows success feedback.
+- [ ] Paste action is disabled when clipboard is empty.
+- [ ] Paste action targets selected folder.
+- [ ] Paste action targets parent folder when selected item is a case.
+- [ ] Paste action targets root when nothing is selected.
+- [ ] Paste action uses unique name when pasted key collides.
+- [ ] Paste action updates caseName when pasted item is a case.
+- [ ] Paste action deep clones clipboard data.
+- [ ] Paste action expands target folder.
+- [ ] Paste action selects pasted item.
+- [ ] Paste action saves root data.
+- [ ] Paste action re-renders tree.
+- [ ] Delete action is disabled when nothing is selected.
+- [ ] Delete action asks for confirmation.
+- [ ] Delete action removes selected key from parent.
+- [ ] Delete action clears selected path.
+- [ ] Delete action clears selected item.
+- [ ] Delete action resets editor when deleted item was active.
+- [ ] Delete action saves root data.
+- [ ] Delete action re-renders tree.
+- [ ] Delete action re-renders editor.
+- [ ] Move item up is available for tree items.
+- [ ] Move item down is available for tree items.
+- [ ] Move item refuses to move past first item.
+- [ ] Move item refuses to move past last item.
+- [ ] Move item preserves sibling data.
+- [ ] Move item updates custom order.
+- [ ] Move item re-renders tree.
+- [ ] Move item saves root data.
+- [ ] Copy item JSON serializes selected item.
+- [ ] Copy item JSON writes to clipboard.
+- [ ] Copy item JSON shows success feedback.
+- [ ] Copy item JSON handles clipboard failure.
+- [ ] Case editor title displays selected case name.
+- [ ] Case editor title includes run case button.
+- [ ] Case editor run button runs only selected case.
+- [ ] Case editor has shape tab.
+- [ ] Case editor has additional information tab.
+- [ ] Case editor defaults to shape tab.
+- [ ] Case editor tab switch updates state.
+- [ ] Case editor tab switch updates active tab styling.
+- [ ] Case editor tab switch re-renders tab content.
+- [ ] Case editor validates missing item and falls back to welcome.
+- [ ] Shape tab renders top layer input.
+- [ ] Shape tab renders bottom layer input.
+- [ ] Shape tab renders top interactive renderer container.
+- [ ] Shape tab renders bottom interactive renderer container.
+- [ ] Shape tab renders reset top button.
+- [ ] Shape tab renders reset bottom button.
+- [ ] Shape tab renders algorithm input mode toggle.
+- [ ] Shape tab renders notation selector when algorithm mode is active.
+- [ ] Shape tab renders algorithm text input when algorithm mode is active.
+- [ ] Shape tab renders apply algorithm button when temporary hex exists.
+- [ ] Shape tab renders copy algorithm button after algorithm apply.
+- [ ] Shape tab hides copy algorithm button before algorithm apply.
+- [ ] Shape input uppercases user input.
+- [ ] Shape input truncates to twelve characters.
+- [x] Shape input accepts partial values without throwing.
+- [ ] Shape input updates renderer when twelve characters are valid.
+- [ ] Shape input rejects invalid twelve-character strings.
+- [ ] Shape input leaves previous valid state on invalid input.
+- [ ] Shape input saves case data when editing a case.
+- [ ] Shape input does not save root data while editing template draft.
+- [ ] Shape input updates template draft while editing template.
+- [ ] Shape input reattaches interactive events after render.
+- [ ] Shape input clears algorithm text when manual shape click changes state.
+- [ ] Shape input clears temporary algorithm state when manual shape click changes state.
+- [ ] Shape input top reset toggles between template/default and current state.
+- [ ] Shape input bottom reset toggles between template/default and current state.
+- [ ] Shape input reset saves when editing case.
+- [ ] Shape input reset does not save root when editing template draft.
+- [ ] Interactive renderer is created only after feature modules load.
+- [ ] Interactive renderer state is created for top layer.
+- [ ] Interactive renderer state is created for bottom layer.
+- [ ] Interactive renderer uses default color scheme.
+- [ ] Interactive renderer click updates top input.
+- [ ] Interactive renderer click updates bottom input.
+- [ ] Interactive renderer click updates case fields.
+- [ ] Interactive renderer click updates template draft fields.
+- [ ] Algorithm input mode persists to localStorage.
+- [ ] Algorithm input mode shows algorithm section when enabled.
+- [ ] Algorithm input mode hides algorithm section when disabled.
+- [ ] Algorithm input mode clears temporary algorithm state when disabled.
+- [ ] Algorithm notation type persists to localStorage.
+- [ ] Algorithm notation type supports normal notation.
+- [ ] Algorithm notation type supports karnotation.
+- [ ] Algorithm notation change reprocesses existing algorithm input.
+- [ ] Algorithm input empty text restores current shape inputs.
+- [ ] Algorithm input karnotation conversion uses feature module helper.
+- [ ] Algorithm input normalizes scramble when normalizer exists.
+- [ ] Algorithm input inverts algorithm for solution visualization when helper exists.
+- [ ] Algorithm input converts algorithm to hex when converter exists.
+- [ ] Algorithm input stores temporary top hex.
+- [ ] Algorithm input stores temporary bottom hex.
+- [ ] Algorithm input stores original algorithm text.
+- [ ] Algorithm input updates top layer preview.
+- [ ] Algorithm input updates bottom layer preview.
+- [ ] Algorithm input shows errors as floating messages.
+- [ ] Apply algorithm requires a temporary hex result.
+- [ ] Apply algorithm writes top hex to selected target.
+- [ ] Apply algorithm writes bottom hex to selected target.
+- [ ] Apply algorithm records last applied algorithm.
+- [ ] Apply algorithm saves root when target is case.
+- [ ] Apply algorithm does not save root when target is template draft.
+- [ ] Apply algorithm clears input text.
+- [ ] Apply algorithm shows post-apply actions.
+- [ ] Apply algorithm shows success feedback.
+- [ ] Copy algorithm to field requires a last applied algorithm.
+- [ ] Copy algorithm to field writes alg field to selected target.
+- [ ] Copy algorithm to field saves root when target is case.
+- [ ] Copy algorithm to field does not save root when target is template draft.
+- [ ] Copy algorithm to field hides post-apply actions.
+- [ ] Copy algorithm to field shows success feedback.
+- [ ] Clear temporary algorithm state clears temp text.
+- [ ] Clear temporary algorithm state clears temp hex.
+- [ ] Clear temporary algorithm state hides post-apply actions.
+- [ ] Additional information tab renders equator controls.
+- [ ] Additional information tab renders parity controls.
+- [ ] Additional information tab renders AUF controls.
+- [ ] Additional information tab renders ADF controls.
+- [ ] Additional information tab renders RUL controls.
+- [ ] Additional information tab renders RDL controls.
+- [ ] Additional information tab renders constraints list.
+- [ ] Additional information tab renders add constraint controls.
+- [ ] Additional information tab renders algorithm text field.
+- [ ] Additional information tab explains parity in the info tooltip.
+- [ ] Additional information tab info tooltip opens on hover.
+- [ ] Additional information tab info tooltip follows viewport bounds.
+- [ ] Equator control toggles slash.
+- [ ] Equator control toggles pipe.
+- [ ] Equator control saves after change.
+- [ ] Parity mode supports ignore.
+- [ ] Parity mode supports overall.
+- [ ] Parity mode supports color-specific.
+- [ ] Parity ignore removes parity constraints.
+- [ ] Parity overall stores selected overall values.
+- [ ] Parity color-specific stores selected color values.
+- [ ] Move array toggles allowed moves.
+- [ ] Number array toggles allowed numeric turns.
+- [ ] Move array initializes missing arrays.
+- [ ] Number array initializes missing arrays.
+- [ ] Constraint add requires a position.
+- [ ] Constraint add requires at least one value.
+- [ ] Constraint add creates constraints object when missing.
+- [ ] Constraint add stores values by position.
+- [ ] Constraint remove deletes one position.
+- [ ] Constraint remove preserves other positions.
+- [ ] Constraint changes save root data.
+- [ ] Generic field update writes the given field.
+- [ ] Generic field update saves root data.
+- [ ] Generic field update re-renders when needed.
+- [ ] Template editor title displays case template.
+- [ ] Template editor title includes save button.
+- [ ] Template editor title includes clear button.
+- [ ] Template editor subtitle explains future case defaults.
+- [ ] Template editor starts from saved template when present.
+- [ ] Template editor starts from default case when no template exists.
+- [ ] Template editor removes caseName from draft.
+- [ ] Template editor removes alg from draft.
+- [ ] Template editor has shape tab.
+- [ ] Template editor has additional information tab.
+- [ ] Template editor defaults to shape tab.
+- [ ] Template tab switch updates state.
+- [ ] Template tab switch updates active tab styling.
+- [ ] Template tab switch re-renders tab content.
+- [ ] Template shape tab uses template draft fields.
+- [ ] Template additional tab uses template draft fields.
+- [ ] Template equator updates draft.
+- [ ] Template parity mode updates draft.
+- [ ] Template move array updates draft.
+- [ ] Template number array updates draft.
+- [ ] Template constraint add updates draft.
+- [ ] Template constraint remove updates draft.
+- [ ] Save template deep clones draft.
+- [ ] Save template stores root-specific localStorage key.
+- [ ] Save template shows success feedback.
+- [ ] Save template returns to selected case editor when a case is selected.
+- [ ] Save template returns to welcome when no case is selected.
+- [ ] Clear template asks for confirmation.
+- [ ] Clear template removes root-specific localStorage key.
+- [ ] Clear template clears state template.
+- [ ] Clear template shows success feedback.
+- [ ] Clear template returns to selected case editor when a case is selected.
+- [ ] Clear template returns to welcome when no case is selected.
+- [ ] Set selected case as template asks for confirmation.
+- [ ] Set selected case as template removes alg.
+- [ ] Set selected case as template removes caseName.
+- [ ] Set selected case as template saves root-specific key.
+- [ ] Set selected case as template shows success feedback.
+- [ ] Extra tools menu opens from toolbar.
+- [ ] Extra tools menu includes case template.
+- [ ] Extra tools menu includes import data to root.
+- [ ] Extra tools menu includes reset root.
+- [ ] Extra tools menu includes bulk import.
+- [ ] Extra tools menu includes data management.
+- [ ] Extra tools context menu positions at click coordinates.
+- [ ] Extra tools context menu closes on outside click.
+- [ ] Import data to root opens file import modal.
+- [ ] Root import modal accepts JSON files.
+- [ ] Root import modal rejects non-JSON files.
+- [ ] Root import modal supports click-to-pick.
+- [ ] Root import modal supports drag over visual state.
+- [ ] Root import modal supports drag leave visual reset.
+- [ ] Root import modal supports drop.
+- [ ] Root import modal shows selected file name.
+- [ ] Root import modal reveals import actions after valid file.
+- [ ] Root import modal supports merge mode.
+- [ ] Root import modal supports override mode.
+- [ ] Root import modal closes on cancel.
+- [ ] Root import modal closes on outside click.
+- [ ] Root import override replaces current tree data.
+- [ ] Root import override saves root data.
+- [ ] Root import merge recursively merges folders.
+- [ ] Root import merge renames colliding cases.
+- [ ] Root import merge updates caseName after renaming colliding cases.
+- [ ] Root import merge preserves existing folders.
+- [ ] Root import merge saves root data.
+- [ ] Root import invalid JSON shows error feedback.
+- [ ] Reset root asks for confirmation.
+- [ ] Reset root clears current tree.
+- [ ] Reset root clears current root template.
+- [ ] Reset root clears selected path.
+- [ ] Reset root clears selected item.
+- [ ] Reset root resets editor to welcome.
+- [ ] Reset root saves root data.
+- [ ] Reset root updates root button text.
+- [ ] Reset root shows success feedback.
+- [ ] Deprecated bulk import from root asks for confirmation.
+- [ ] Deprecated bulk import clears selection before opening bulk import.
+- [ ] Bulk import modal accepts CSV files.
+- [ ] Bulk import modal accepts XLSX files.
+- [ ] Bulk import modal rejects other files.
+- [ ] Bulk import modal supports normal notation.
+- [ ] Bulk import modal supports karnotation.
+- [ ] Bulk import modal supports click-to-pick.
+- [ ] Bulk import modal supports drag over visual state.
+- [ ] Bulk import modal supports drag leave visual reset.
+- [ ] Bulk import modal supports drop.
+- [ ] Bulk import modal shows selected file name.
+- [ ] Bulk import modal enables process button after valid file.
+- [ ] Bulk import modal closes on cancel.
+- [ ] Bulk import modal closes on outside click.
+- [ ] Bulk import CSV reads via Papa when available.
+- [ ] Bulk import CSV falls back to simple split parser.
+- [ ] Bulk import XLSX awaits XLSX script loading.
+- [ ] Bulk import XLSX reads first worksheet.
+- [ ] Bulk import skips rows with fewer than two cells.
+- [ ] Bulk import skips empty case names.
+- [ ] Bulk import skips empty algorithms.
+- [ ] Bulk import converts karnotation when selected.
+- [ ] Bulk import normalizes algorithm when normalizer exists.
+- [ ] Bulk import inverts algorithm before visualization conversion.
+- [ ] Bulk import converts algorithm to top and bottom hex.
+- [ ] Bulk import creates cases in selected folder.
+- [ ] Bulk import creates cases in root when no folder selected.
+- [ ] Bulk import applies case template to imported cases.
+- [ ] Bulk import writes caseName.
+- [ ] Bulk import writes inputTop.
+- [ ] Bulk import writes inputBottom.
+- [ ] Bulk import writes alg.
+- [ ] Bulk import uses unique names for collisions.
+- [ ] Bulk import counts successes.
+- [ ] Bulk import counts failures.
+- [ ] Bulk import logs failed case details to console.
+- [ ] Bulk import expands target folder.
+- [ ] Bulk import saves root data.
+- [ ] Bulk import re-renders tree.
+- [ ] Bulk import shows completion feedback.
+- [ ] Bulk import handles file processing errors.
+- [ ] Extract JSON opens extraction modal.
+- [ ] Extract JSON closes old extraction modal before opening a new one.
+- [ ] Extract JSON serializes current root only.
+- [ ] Extract JSON pretty-prints JSON.
+- [ ] Extract JSON displays root name in title.
+- [ ] Extract JSON provides copy button.
+- [ ] Extract JSON provides download button.
+- [ ] Extract JSON copy selects modal textarea.
+- [ ] Extract JSON copy writes to clipboard.
+- [ ] Extract JSON copy handles failure.
+- [ ] Extract JSON download asks for confirmation.
+- [ ] Extract JSON download names file after active root.
+- [ ] Extract JSON download creates object URL.
+- [ ] Extract JSON download revokes object URL.
+- [ ] Extract JSON modal closes on outside click.
+- [ ] Run JSON opens run modal.
+- [ ] Run selected case wraps single case into named object.
+- [ ] Run root collects all nested cases.
+- [ ] Run modal shows progress bar.
+- [ ] Run modal shows progress text.
+- [ ] Run modal shows stop button.
+- [ ] Run modal stop button cancels future generation.
+- [ ] Run modal close button removes modal.
+- [ ] Run modal handles no cases.
+- [ ] Run modal generates requested total scramble attempts.
+- [ ] Run modal chooses random cases from collection.
+- [ ] Run modal calls solver when available.
+- [ ] Run modal retries solver shift errors.
+- [ ] Run modal limits solver retry count.
+- [ ] Run modal displays case name per result.
+- [ ] Run modal displays generated scramble per result.
+- [ ] Run modal displays solution or error per result.
+- [ ] Run modal appends results incrementally.
+- [ ] Run modal yields between generations to keep UI responsive.
+- [ ] Run modal progress reaches complete state.
+- [ ] Run modal handles thrown errors per generated case.
+- [ ] Data management modal opens from extra tools.
+- [ ] Data management modal exposes reset all data.
+- [ ] Data management modal exposes export all data.
+- [ ] Data management modal exposes import data.
+- [ ] Data management modal closes from close button.
+- [ ] Reset all data asks for confirmation.
+- [ ] Reset all data resets developing roots to default.
+- [ ] Reset all data resets active root to default.
+- [ ] Reset all data clears selected path.
+- [ ] Reset all data clears selected item.
+- [ ] Reset all data clears current tree.
+- [ ] Reset all data clears current template.
+- [ ] Reset all data clears local root templates when necessary.
+- [ ] Reset all data saves developing JSONs.
+- [ ] Reset all data re-renders tree.
+- [ ] Reset all data re-renders editor.
+- [ ] Reset all data updates root button.
+- [ ] Reset all data closes data management modal.
+- [ ] Reset all data shows success feedback.
+- [ ] Export all data serializes every root.
+- [ ] Export all data pretty-prints JSON.
+- [ ] Export all data downloads developing-jsons.json.
+- [ ] Export all data creates object URL.
+- [ ] Export all data revokes object URL.
+- [ ] General import opens file import modal.
+- [ ] General import closes data management modal first.
+- [ ] General import accepts JSON files.
+- [ ] General import supports override mode.
+- [ ] General import supports merge mode.
+- [ ] General import override replaces all developing roots.
+- [ ] General import override sets active root to first imported root.
+- [ ] General import merge keeps existing roots.
+- [ ] General import merge renames colliding root names.
+- [ ] General import merge saves developing JSONs.
+- [ ] General import switches to active root.
+- [ ] General import invalid JSON shows error feedback.
+- [ ] Floating messages remove previous active floating message.
+- [ ] Floating messages support info type.
+- [ ] Floating messages support success type.
+- [ ] Floating messages support error type.
+- [ ] Floating messages use devtool theme when devtool is mounted.
+- [ ] Floating messages auto-dismiss after duration.
+- [ ] Floating messages animate out before removal.
+- [ ] Confirmation modal renders title.
+- [ ] Confirmation modal renders message.
+- [ ] Confirmation modal has cancel button.
+- [ ] Confirmation modal has OK button.
+- [ ] Confirmation modal confirms through callback.
+- [ ] Confirmation modal cancels through callback.
+- [ ] Confirmation modal cancels on outside click.
+- [ ] Confirmation modal has z-index above devtool.
+- [ ] Rename modal renders title.
+- [ ] Rename modal renders text input.
+- [ ] Rename modal focuses input.
+- [ ] Rename modal selects input text.
+- [ ] Rename modal confirms on OK.
+- [ ] Rename modal confirms on Enter.
+- [ ] Rename modal cancels on Cancel.
+- [ ] Rename modal cancels on Escape.
+- [ ] Rename modal closes on outside click.
+- [ ] Generic modal helper renders header.
+- [ ] Generic modal helper renders close button.
+- [ ] Generic modal helper renders supplied body HTML.
+- [ ] Generic modal helper supports custom class name.
+- [ ] Generic modal helper supports custom content class.
+- [ ] Generic modal helper supports max width.
+- [ ] Generic modal helper supports custom z-index.
+- [ ] Generic modal helper closes on outside click by default.
+- [ ] Generic modal helper can disable outside-click closing.
+- [ ] Keyboard shortcut Ctrl/Cmd+C copies selected item.
+- [ ] Keyboard shortcut Ctrl/Cmd+V pastes clipboard.
+- [ ] Keyboard shortcut Delete deletes selected item.
+- [ ] Keyboard shortcut Backspace deletes selected item when focus is not text input.
+- [ ] Keyboard shortcut Ctrl/Cmd+N creates new case.
+- [ ] Keyboard shortcut Ctrl/Cmd+Shift+N creates new folder.
+- [ ] Keyboard shortcuts are active only while devtool is mounted.
+- [ ] Keyboard shortcuts do not break text input editing.
+- [ ] Inline onclick handlers are removed from generated markup.
+- [ ] DOM events are delegated from stable devtool root nodes.
+- [ ] Render function can rebuild tree without duplicating listeners.
+- [ ] Render function can rebuild editor without duplicating listeners.
+- [ ] Render function can rebuild modals without duplicating listeners.
+- [ ] State action returns whether persistence is required.
+- [ ] Persistence is centralized after mutating actions.
+- [ ] LocalStorage keys are defined in one place.
+- [ ] LocalStorage writes are wrapped for failure safety.
+- [ ] LocalStorage reads are wrapped for invalid JSON safety.
+- [ ] Imported JSON is validated before replacing state.
+- [ ] Case objects are normalized after import.
+- [ ] Case objects get default inputTop when missing.
+- [ ] Case objects get default inputBottom when missing.
+- [ ] Case objects get default equator when missing.
+- [ ] Case objects get default parity when missing.
+- [ ] Case objects get default constraints when missing.
+- [ ] Case objects get default AUF when missing.
+- [ ] Case objects get default ADF when missing.
+- [ ] Case objects get default RUL when missing.
+- [ ] Case objects get default RDL when missing.
+- [ ] Case objects get default alg when missing.
+- [ ] Folder objects are normalized recursively.
+- [ ] Normalization avoids mutating imported source objects directly.
+- [ ] Path utilities are tested against root paths.
+- [ ] Path utilities are tested against nested paths.
+- [ ] Path utilities are tested against names containing spaces.
+- [ ] Path utilities are tested against names containing quotes.
+- [ ] HTML rendering escapes user-provided names.
+- [ ] HTML rendering escapes user-provided algorithms.
+- [ ] HTML rendering escapes imported JSON text where needed.
+- [ ] Download filenames are sanitized.
+- [ ] Devtool dark theme styles every shell surface.
+- [ ] Devtool dark theme styles toolbar buttons.
+- [ ] Devtool dark theme styles root selector.
+- [ ] Devtool dark theme styles tree rows.
+- [ ] Devtool dark theme styles selected tree row.
+- [ ] Devtool dark theme styles hover tree row.
+- [ ] Devtool dark theme styles editor cards.
+- [ ] Devtool dark theme styles tabs.
+- [ ] Devtool dark theme styles inputs.
+- [ ] Devtool dark theme styles modals.
+- [ ] Devtool dark theme styles context menus.
+- [ ] Devtool dark theme styles drag-drop zones.
+- [ ] Devtool dark theme styles run modal.
+- [ ] Devtool dark theme styles extract modal.
+- [ ] Devtool light theme styles every shell surface.
+- [ ] Devtool light theme styles toolbar buttons.
+- [ ] Devtool light theme styles root selector.
+- [ ] Devtool light theme styles tree rows.
+- [ ] Devtool light theme styles selected tree row.
+- [ ] Devtool light theme styles hover tree row.
+- [ ] Devtool light theme styles editor cards.
+- [ ] Devtool light theme styles tabs.
+- [ ] Devtool light theme styles inputs.
+- [ ] Devtool light theme styles modals.
+- [ ] Devtool light theme styles context menus.
+- [ ] Devtool light theme styles drag-drop zones.
+- [ ] Devtool light theme styles run modal.
+- [ ] Devtool light theme styles extract modal.
+- [ ] Devtool responsive layout handles desktop width.
+- [ ] Devtool responsive layout handles tablet width.
+- [ ] Devtool responsive layout handles mobile width.
+- [ ] Devtool responsive layout prevents toolbar overlap.
+- [ ] Devtool responsive layout prevents editor overlap.
+- [ ] Devtool responsive layout keeps modals inside viewport.
+- [ ] Devtool responsive layout keeps context menu inside viewport.
+- [ ] Devtool responsive layout keeps shape inputs usable on mobile.
+- [ ] Devtool responsive layout keeps tree scrollable on mobile.
+- [ ] Devtool responsive layout keeps run modal scrollable on mobile.
+- [ ] Benchmark still opens trainer mode.
+- [ ] Benchmark still opens devtool-open mode.
+- [ ] Build still produces minified mangled output in public.
+- [ ] Linter still runs on rewritten modules.
+- [x] Browser smoke test opens trainer without console errors.
+- [x] Browser smoke test opens devtool without console errors.
+- [x] Browser smoke test creates a case.
+- [x] Browser smoke test renames a case.
+- [x] Browser smoke test edits shape input.
+- [x] Browser smoke test switches to additional tab.
+- [x] Browser smoke test opens and closes root selector.
+- [x] Browser smoke test opens and closes context menu.
+- [x] Browser smoke test opens and closes modal by outside click.
+- [ ] Browser smoke test imports invalid JSON and shows error.
+- [x] Browser smoke test extracts JSON.
+- [x] Browser smoke test closes devtool back to trainer.

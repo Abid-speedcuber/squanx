@@ -3,7 +3,7 @@ import globals from 'globals';
 
 export default [
   {
-    ignores: ['node_modules/', 'public/']
+    ignores: ['node_modules/', 'public/', 'main/src/devtool.legacy.js']
   },
   js.configs.recommended,
   {

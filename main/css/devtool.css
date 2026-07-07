@@ -610,6 +610,131 @@
     flex-shrink: 0;
 }
 
+/* Squanx dark theme pass */
+.json-creator-fullscreen {
+    --devtool-bg: #020813;
+    --devtool-panel: #06101f;
+    --devtool-panel-raised: #09182c;
+    --devtool-muted-panel: #071321;
+    --devtool-field: #0a1a30;
+    --devtool-border: #183653;
+    --devtool-border-strong: #244b70;
+    --devtool-text: #d9e9ff;
+    --devtool-strong: #f3f8ff;
+    --devtool-muted: #7f9bbd;
+    --devtool-accent: #75b3f0;
+    --devtool-hover: rgba(255, 255, 255, 0.08);
+    background: var(--devtool-bg);
+    color: var(--devtool-text);
+}
+
+.json-creator-fullscreen,
+.json-creator-fullscreen .json-creator-main,
+.json-creator-fullscreen .json-creator-content,
+.json-creator-fullscreen .json-creator-content-body {
+    background: var(--devtool-bg) !important;
+}
+
+.json-creator-fullscreen .json-creator-topbar,
+.json-creator-fullscreen .json-creator-sidebar,
+.json-creator-fullscreen .json-creator-toolbar,
+.json-creator-fullscreen .json-creator-content-header,
+.json-creator-fullscreen .json-creator-section,
+.json-creator-fullscreen .json-creator-welcome {
+    background: var(--devtool-panel) !important;
+    color: var(--devtool-text) !important;
+    border-color: var(--devtool-border) !important;
+}
+
+.json-creator-fullscreen .json-creator-sidebar {
+    background: var(--devtool-muted-panel) !important;
+}
+
+.json-creator-fullscreen h2,
+.json-creator-fullscreen h3,
+.json-creator-fullscreen h4,
+.json-creator-fullscreen label,
+.json-creator-fullscreen .json-creator-tree-item,
+.json-creator-fullscreen .json-creator-grid-item,
+.json-creator-fullscreen .tree-label,
+.json-creator-fullscreen .json-creator-content-header h3 {
+    color: var(--devtool-strong) !important;
+}
+
+.json-creator-fullscreen p,
+.json-creator-fullscreen .json-creator-content-header p,
+.json-creator-fullscreen small {
+    color: var(--devtool-muted) !important;
+}
+
+.json-creator-fullscreen button,
+.json-creator-fullscreen #rootSelectorBtn,
+.json-creator-fullscreen input,
+.json-creator-fullscreen textarea,
+.json-creator-fullscreen select {
+    background: var(--devtool-field) !important;
+    border-color: var(--devtool-border) !important;
+    color: var(--devtool-text) !important;
+}
+
+.json-creator-fullscreen button:hover,
+.json-creator-fullscreen #rootSelectorBtn:hover,
+.json-creator-fullscreen .json-creator-icon-btn:hover,
+.json-creator-fullscreen .json-creator-toolbar-btn:hover,
+.json-creator-fullscreen .json-creator-tree-item:hover {
+    background: var(--devtool-hover) !important;
+    border-color: var(--devtool-border-strong) !important;
+    color: var(--devtool-strong) !important;
+}
+
+.json-creator-fullscreen .json-creator-tree-item.selected {
+    background: #12324abf !important;
+    color: var(--devtool-strong) !important;
+}
+
+.json-creator-fullscreen .json-creator-tree-item.multi-selected,
+.json-creator-fullscreen .root-list-item.active {
+    background: var(--devtool-panel-raised) !important;
+}
+
+.json-creator-fullscreen img {
+    filter: invert(92%) sepia(12%) saturate(927%) hue-rotate(176deg) brightness(103%) contrast(101%);
+}
+
+.modal-content.devtool-modal,
+.json-creator-fullscreen ~ .modal .modal-content,
+.extract-json-content,
+.run-modal-content {
+    background: var(--devtool-panel, #06101f) !important;
+    border-color: var(--devtool-border, #183653) !important;
+    color: var(--devtool-text, #d9e9ff) !important;
+}
+
+.modal-content.devtool-modal .modal-header,
+.extract-json-content .modal-header,
+.run-modal-header,
+.run-modal-progress {
+    background: var(--devtool-panel, #06101f) !important;
+    border-color: var(--devtool-border, #183653) !important;
+    color: var(--devtool-strong, #f3f8ff) !important;
+}
+
+.modal-content.devtool-modal input,
+.modal-content.devtool-modal textarea,
+.modal-content.devtool-modal button,
+.extract-json-content textarea,
+.run-modal-content button {
+    background: var(--devtool-field, #0a1a30) !important;
+    border-color: var(--devtool-border, #183653) !important;
+    color: var(--devtool-text, #d9e9ff) !important;
+}
+
+.floating-message.devtool-theme {
+    background: #0d2233 !important;
+    border-color: rgba(113, 216, 252, 0.8) !important;
+    color: #bdefff !important;
+}
+
 .stop-button {
     background: #d32f2f;
     border: none;
@@ -627,6 +752,38 @@
 .stop-button:disabled {
     background: #555;
     cursor: not-allowed;
+}
+
+/* Final dark overrides for editor controls declared later in this file. */
+.json-creator-fullscreen .case-editor-tabs,
+.json-creator-fullscreen .json-creator-section-compact,
+.json-creator-fullscreen .algorithm-input-section {
+    background: var(--devtool-panel) !important;
+    border-color: var(--devtool-border) !important;
+}
+
+.json-creator-fullscreen .case-editor-tab {
+    background: transparent !important;
+    color: var(--devtool-muted) !important;
+    border-color: transparent !important;
+}
+
+.json-creator-fullscreen .case-editor-tab:hover {
+    background: var(--devtool-hover) !important;
+    color: var(--devtool-strong) !important;
+}
+
+.json-creator-fullscreen .case-editor-tab.active {
+    color: var(--devtool-accent) !important;
+    border-bottom-color: var(--devtool-accent) !important;
+}
+
+.json-creator-fullscreen .algorithm-text-input,
+.json-creator-fullscreen .algorithm-output,
+.json-creator-fullscreen .interactive-scramble-container {
+    background: var(--devtool-field) !important;
+    border-color: var(--devtool-border) !important;
+    color: var(--devtool-text) !important;
 }
 
 .case-editor-tabs {
@@ -951,4 +1108,42 @@ svg * {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+}
+
+/* EOF dark-theme guard: this wins over legacy light declarations above. */
+.json-creator-fullscreen .case-editor-tabs,
+.json-creator-fullscreen .json-creator-section-compact,
+.json-creator-fullscreen .algorithm-input-section,
+.json-creator-fullscreen .pre-abf-section {
+    background: var(--devtool-panel) !important;
+    border-color: var(--devtool-border) !important;
+}
+
+.json-creator-fullscreen .case-editor-tab {
+    background: transparent !important;
+    color: var(--devtool-muted) !important;
+    border-color: transparent !important;
+}
+
+.json-creator-fullscreen .case-editor-tab:hover {
+    background: var(--devtool-hover) !important;
+    color: var(--devtool-strong) !important;
+}
+
+.json-creator-fullscreen .case-editor-tab.active {
+    color: var(--devtool-accent) !important;
+    border-bottom-color: var(--devtool-accent) !important;
+}
+
+.json-creator-fullscreen .algorithm-text-input,
+.json-creator-fullscreen .algorithm-output,
+.json-creator-fullscreen .interactive-scramble-container {
+    background: var(--devtool-field) !important;
+    border-color: var(--devtool-border) !important;
+    color: var(--devtool-text) !important;
+}
+
+.json-creator-fullscreen .extract-json-footer {
+    background: var(--devtool-panel) !important;
+    border-color: var(--devtool-border) !important;
 }

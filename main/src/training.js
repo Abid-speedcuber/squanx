@@ -4,6 +4,7 @@ import { ensureFeatureModules, openDevtoolFullscreen } from './moduleLoader.js';
 const AppState = {
     selectedCases: [],
     currentScramble: null,
+    previousScramble: null,
     timerState: 'idle', // idle, preparing, running
     timerStart: 0,
     timerElapsed: 0,
@@ -245,44 +246,108 @@ function getInitialTimerDisplay() {
         const times = AppState.sessionTimes[AppState.activeTrainingJSON];
         if (times.length > 0) {
             const lastTime = times[times.length - 1].time;
-            return lastTime.toFixed(3);
+            return lastTime.toFixed(2);
         }
     }
-    return '0.000';
+    return '0.00';
+}
+
+function trainerIconSprite() {
+    return `
+        <svg aria-hidden="true" style="display:none">
+            <symbol id="rail-icon-cases" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+            <symbol id="rail-icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+            <symbol id="rail-icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7"/><line x1="12" y1="17" x2="12" y2="17"/></symbol>
+            <symbol id="rail-icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></symbol>
+            <symbol id="rail-icon-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+            <symbol id="rail-icon-devtool" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/><path d="m14.5 4-5 16"/></symbol>
+            <symbol id="icon-lightbulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M8.5 14.5c-1.6-1.1-2.5-2.9-2.5-4.8A6 6 0 0 1 18 9.7c0 1.9-.9 3.7-2.5 4.8-.6.4-.9 1-.9 1.7V17H9.4v-.8c0-.7-.3-1.3-.9-1.7z"/></symbol>
+        </svg>
+    `;
+}
+
+function railButton(action, icon, label) {
+    return `
+        <button class="rail-btn" data-action="${action}" data-tip="${label}" aria-label="${label}">
+            <span class="rail-btn-icon">
+                <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#${icon}"/></svg>
+            </span>
+            <span class="rail-btn-label">${label}</span>
+        </button>
+    `;
 }
 
 // Render main app structure
 function renderApp() {
     const app = document.getElementById('app');
+    const currentScramble = AppState.currentScramble?.scramble || 'Scramble will show up here';
+    const previousScramble = AppState.previousScramble?.scramble || 'Last scramble will show up here';
+
     app.innerHTML = `
-                <div class="top-navbar">
-                    <div class="nav-left">
-                        <div class="app-logo">
-                            <div class="logo-title">SquanGo</div>
-                            <div class="logo-subtitle">Algset Trainer</div>
-                        </div>
-                        <button class="nav-button algset-selector-btn" id="selectAlgsetBtn">${AppState.activeTrainingJSON || 'Select Algset'}</button>
-                        <span class="case-count" id="caseCount">${AppState.selectedCases.length} case(s) selected</span>
-                    </div>
-                    <div class="nav-right">
-                        <button class="nav-button" id="prevScrambleBtn">← Previous</button>
-                        <button class="nav-button" id="nextScrambleBtn">Next →</button>
-                        <button class="nav-button nav-menu-btn" id="menuBtn">⋮</button>
-                    </div>
+        ${trainerIconSprite()}
+        <div class="trainer-shell">
+            <div class="navbar">
+                <div class="nav-left">
+                    <span class="squango" id="squango-home"><span class="squango-sq">Squan</span><span class="squango-go">Go</span></span>
                 </div>
+                <button class="nav-center" id="selectAlgsetBtn">${AppState.activeTrainingJSON || 'Select Algset'}</button>
+                <div class="nav-spacer">
+                    <span class="case-count" id="caseCount">${AppState.selectedCases.length} selected</span>
+                </div>
+            </div>
 
-                <div class="scramble-bar" style="cursor: pointer;" onclick="openScrambleDetailModal()">
-    <div class="scramble-text" id="scrambleDisplay">
-        ${AppState.currentScramble && AppState.currentScramble.scramble ? AppState.currentScramble.scramble : 'No scramble generated'}
-    </div>
-</div>
+            <div class="trainer-main">
+                <nav class="rail collapsed hidden-mobile" id="rail">
+                    <button class="rail-toggle" id="rail-toggle" data-tip="Expand" aria-label="Toggle sidebar">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>
+                    </button>
+                    <div class="rail-actions">
+                        ${railButton('cases', 'rail-icon-cases', 'Case selector')}
+                        ${railButton('search', 'rail-icon-search', 'Algsets')}
+                        ${railButton('help', 'rail-icon-help', 'Help')}
+                        ${railButton('settings', 'rail-icon-settings', 'Settings')}
+                    </div>
+                    <div class="rail-extra">
+                        ${railButton('upload', 'rail-icon-upload', 'Upload data')}
+                        ${railButton('devtool', 'rail-icon-devtool', 'Devtool')}
+                    </div>
+                </nav>
 
-                <div class="main-content">
-                    <div class="timer-zone" id="timerZone">
+                <div class="content">
+                    <div class="top-bar">
+                        <div class="scramble-row">
+                            <button class="bar-scramble" id="scrambleDisplay">${currentScramble}</button>
+                        </div>
+                        <div class="scramble-controls">
+                            <button class="bar-btn" id="prevScrambleBtn" ${AppState.previousScramble ? '' : 'disabled'}>← Previous</button>
+                            <button class="bar-btn" id="unselprev">Remove last</button>
+                            <button class="bar-btn" id="nextScrambleBtn">Next →</button>
+                            <button class="hint-btn" id="hintBtn" aria-label="Show hint">
+                                <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lightbulb"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="timer-zone timer-box" id="timerZone">
                         <div class="timer-display" id="timerDisplay">${getInitialTimerDisplay()}</div>
                     </div>
+
+                    <div class="bottom-bar">
+                        <button class="bar-scramble previous-scramble" id="previousScrambleDisplay">${previousScramble}</button>
+                    </div>
                 </div>
-            `;
+            </div>
+
+            <nav class="mobilebar" id="mobilebar">
+                ${railButton('cases', 'rail-icon-cases', 'Case selector')}
+                ${railButton('search', 'rail-icon-search', 'Algsets')}
+                ${railButton('help', 'rail-icon-help', 'Help')}
+                ${railButton('settings', 'rail-icon-settings', 'Settings')}
+                ${railButton('upload', 'rail-icon-upload', 'Upload data')}
+                ${railButton('devtool', 'rail-icon-devtool', 'Devtool')}
+            </nav>
+        </div>
+    `;
     setupEventListeners();
 }
 
@@ -312,6 +377,7 @@ function generateVisualization(hexState) {
 // Generate new scramble from selected cases
 async function generateNewScramble() {
     if (AppState.selectedCases.length === 0) {
+        AppState.previousScramble = AppState.currentScramble;
         AppState.currentScramble = null;
         renderApp();
         return;
@@ -366,7 +432,8 @@ async function generateNewScramble() {
             }
         }
         
-        AppState.currentScramble = { 
+        AppState.previousScramble = AppState.currentScramble;
+        AppState.currentScramble = {
             ...result, 
             caseName: randomCase.caseName, 
             alg: randomCase.alg || '',
@@ -375,7 +442,8 @@ async function generateNewScramble() {
         renderApp();
     } catch (error) {
         console.error('Error generating scramble:', error);
-        AppState.currentScramble = { 
+        AppState.previousScramble = AppState.currentScramble;
+        AppState.currentScramble = {
             hexState: 'Error generating scramble', 
             scramble: 'Error: ' + error.message,
             caseName: randomCase.caseName
@@ -385,25 +453,89 @@ async function generateNewScramble() {
 }
 
 // Setup event listeners
+let globalTimerListenersAttached = false;
+
 function setupEventListeners() {
-    document.getElementById('selectAlgsetBtn').addEventListener('click', openAlgsetSelectorModal);
-    document.getElementById('prevScrambleBtn').addEventListener('click', () => {
-        // For now, just generate a new scramble
+    document.getElementById('squango-home')?.addEventListener('click', () => {
+        window.location.href = 'https://squan-go.web.app/';
+    });
+
+    document.getElementById('selectAlgsetBtn')?.addEventListener('click', openAlgsetSelectorModal);
+    document.getElementById('scrambleDisplay')?.addEventListener('click', openScrambleDetailModal);
+    document.getElementById('previousScrambleDisplay')?.addEventListener('click', openPreviousScrambleModal);
+    document.getElementById('prevScrambleBtn')?.addEventListener('click', () => {
+        if (AppState.previousScramble) {
+            const current = AppState.currentScramble;
+            AppState.currentScramble = AppState.previousScramble;
+            AppState.previousScramble = current;
+            renderApp();
+            return;
+        }
         void generateNewScramble();
     });
-    document.getElementById('nextScrambleBtn').addEventListener('click', () => {
+    document.getElementById('nextScrambleBtn')?.addEventListener('click', () => {
         void generateNewScramble();
     });
-    document.getElementById('menuBtn').addEventListener('click', openMenuModal);
+    document.getElementById('unselprev')?.addEventListener('click', removeLastSolve);
+    document.getElementById('hintBtn')?.addEventListener('click', openHintModal);
+    document.getElementById('rail-toggle')?.addEventListener('click', () => {
+        document.getElementById('rail')?.classList.toggle('collapsed');
+    });
+
+    document.querySelectorAll('[data-action]').forEach(button => {
+        button.addEventListener('click', () => handleRailAction(button.dataset.action));
+    });
 
     const timerZone = document.getElementById('timerZone');
-    timerZone.addEventListener('mousedown', handleTimerMouseDown);
-    timerZone.addEventListener('mouseup', handleTimerMouseUp);
-    timerZone.addEventListener('touchstart', handleTimerTouchStart);
-    timerZone.addEventListener('touchend', handleTimerTouchEnd);
+    timerZone?.addEventListener('mousedown', handleTimerMouseDown);
+    timerZone?.addEventListener('mouseup', handleTimerMouseUp);
+    timerZone?.addEventListener('touchstart', handleTimerTouchStart);
+    timerZone?.addEventListener('touchend', handleTimerTouchEnd);
 
-    document.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('keyup', handleKeyUp);
+    if (!globalTimerListenersAttached) {
+        document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('keyup', handleKeyUp);
+        globalTimerListenersAttached = true;
+    }
+}
+
+function handleRailAction(action) {
+    switch (action) {
+        case 'cases':
+            if (AppState.activeTrainingJSON) {
+                openCaseSelectionModal();
+            } else {
+                openAlgsetSelectorModal();
+            }
+            break;
+        case 'search':
+            openAlgsetSelectorModal();
+            break;
+        case 'help':
+            openHelpModal();
+            break;
+        case 'settings':
+            openSettingsModal();
+            break;
+        case 'upload':
+            window.openImportAlgsetModal();
+            break;
+        case 'devtool':
+            void window.showJsonCreatorFullscreen();
+            break;
+    }
+}
+
+function removeLastSolve() {
+    if (!AppState.activeTrainingJSON || !AppState.sessionTimes[AppState.activeTrainingJSON]?.length) {
+        showFloatingMessage('No solve to remove', 'info');
+        return;
+    }
+
+    AppState.sessionTimes[AppState.activeTrainingJSON].pop();
+    saveSessionTimes();
+    updateTimerDisplay();
+    showFloatingMessage('Last solve removed', 'success');
 }
 
 // Timer handlers
@@ -545,7 +677,7 @@ function stopTimer() {
     const display = document.getElementById('timerDisplay');
     if (display) {
         display.className = 'timer-display';
-        const seconds = (AppState.timerElapsed / 1000).toFixed(3);
+        const seconds = (AppState.timerElapsed / 1000).toFixed(2);
         display.textContent = seconds;
     }
 
@@ -569,7 +701,7 @@ function updateTimer() {
         AppState.timerElapsed = Date.now() - AppState.timerStart;
         const display = document.getElementById('timerDisplay');
         if (display) {
-            const seconds = (AppState.timerElapsed / 1000).toFixed(3);
+            const seconds = (AppState.timerElapsed / 1000).toFixed(2);
             display.textContent = seconds;
         }
         requestAnimationFrame(updateTimer);
@@ -585,7 +717,7 @@ function updateTimerDisplay() {
         const requiredDuration = AppState.settings.startingCueDuration * 1000;
         
         display.className = 'timer-display';
-        display.textContent = '0.000';
+        display.textContent = '0.00';
         if (holdDuration >= requiredDuration) {
             display.classList.add('ready');
         } else {
@@ -593,7 +725,7 @@ function updateTimerDisplay() {
         }
     } else if (AppState.timerState === 'running') {
         display.className = 'timer-display';
-        const seconds = (AppState.timerElapsed / 1000).toFixed(3);
+        const seconds = (AppState.timerElapsed / 1000).toFixed(2);
         display.textContent = seconds;
     } else if (AppState.timerState === 'idle') {
 
@@ -603,12 +735,12 @@ function updateTimerDisplay() {
             const times = AppState.sessionTimes[AppState.activeTrainingJSON];
             if (times.length > 0) {
                 const lastTime = times[times.length - 1].time;
-                display.textContent = lastTime.toFixed(3);
+                display.textContent = lastTime.toFixed(2);
             } else {
-                display.textContent = '0.000';
+                display.textContent = '0.00';
             }
         } else {
-            display.textContent = '0.000';
+            display.textContent = '0.00';
         }
     }
 }
@@ -885,7 +1017,6 @@ function renderTreeNode(node, path) {
         const currentPath = [...path, key];
         const pathString = currentPath.join('.');
         const isCase = value.caseName !== undefined;
-        const hasChildren = !isCase && Object.keys(value).some(k => k !== 'icon');
 
         if (isCase) {
             const isSelected = AppState.selectedCases.some(c => c._path === pathString);
@@ -964,66 +1095,26 @@ function openSettingsModal() {
     const modal = document.createElement('div');
     modal.className = 'modal active';
     modal.innerHTML = `
-        <div class="modal-content">
+        <div class="modal-content settings-popup-inner">
             <div class="modal-header">
                 <h2>Settings</h2>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
-            <div class="modal-body">
-                <div class="settings-group">
-                    <label class="settings-label">Theme</label>
-                    <select class="settings-input" id="themeSelect" onchange="changeTheme(this.value)">
-                        <option value="dark" ${AppState.settings.theme === 'dark' ? 'selected' : ''}>Dark</option>
-                        <option value="light" ${AppState.settings.theme === 'light' ? 'selected' : ''}>Light</option>
-                    </select>
-                </div>
-                <div class="settings-group">
-                    <label class="settings-label">Starting Cue Duration (seconds)</label>
-                    <input type="number" class="settings-input" id="cueDurationInput" 
-                        min="0.0" max="0.5" step="0.05" 
-                        value="${AppState.settings.startingCueDuration}" 
+            <div class="modal-body settings-body">
+                <label class="settings-row">
+                    <span>Theme</span>
+                    <button class="settings-cycle-btn" type="button" onclick="cycleTheme()">${AppState.settings.theme}</button>
+                </label>
+                <label class="settings-row">
+                    <span>Starting cue</span>
+                    <input type="number" class="settings-input cue-input" id="cueDurationInput"
+                        min="0.0" max="0.5" step="0.05"
+                        value="${AppState.settings.startingCueDuration}"
                         onchange="changeCueDuration(this.value)">
-                    <small style="color: var(--text-tertiary); font-size: 12px; margin-top: 4px; display: block;">
-                        How long to hold before timer starts (0.0 - 0.5 seconds)
-                    </small>
-                </div>
-                <div class="button-group">
-                    <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Close</button>
-                </div>
-            </div>
-        </div>
-    `;
-    document.body.appendChild(modal);
-
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.remove();
-        }
-    });
-}
-
-// Menu modal
-function openMenuModal() {
-    const modal = document.createElement('div');
-    modal.className = 'modal active';
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width: 300px;">
-            <div class="modal-header">
-                <h2>Menu</h2>
-                <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="menu-list">
-                    <button class="menu-item" onclick="this.closest('.modal').remove(); openSettingsModal();">
-                        Settings
-                    </button>
-                    <button class="menu-item" onclick="this.closest('.modal').remove(); showJsonCreatorFullscreen();">
-                        Open Algset Devtool
-                    </button>
-                    <button class="menu-item" onclick="this.closest('.modal').remove(); openAboutModal();">
-                        About
-                    </button>
-                </div>
+                </label>
+                <button class="settings-action-btn" onclick="this.closest('.modal').remove(); openAlgsetSelectorModal();">Algsets</button>
+                <button class="settings-action-btn" onclick="this.closest('.modal').remove(); openImportAlgsetModal();">Import algset</button>
+                <button class="settings-action-btn" onclick="this.closest('.modal').remove(); showJsonCreatorFullscreen();">Algset devtool</button>
             </div>
         </div>
     `;
@@ -1037,16 +1128,31 @@ function openMenuModal() {
 }
 
 function openAboutModal() {
+    openHelpModal();
+}
+
+function openHelpModal() {
     const modal = document.createElement('div');
     modal.className = 'modal active';
     modal.innerHTML = `
-        <div class="modal-content">
+        <div class="modal-content help-popup-inner">
             <div class="modal-header">
-                <h2>About SquanGo</h2>
+                <h2>Help</h2>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
-            <div class="modal-body">
-                <p>Placeholder for About content</p>
+            <div class="modal-body help-content">
+                <section class="help-section">
+                    <h3>Timer</h3>
+                    <p>Hold space or press the timer, release to start, and stop with space or another press.</p>
+                </section>
+                <section class="help-section">
+                    <h3>Cases</h3>
+                    <p>Select an algset, choose cases, and use Next to generate a fresh scramble.</p>
+                </section>
+                <section class="help-section">
+                    <h3>Devtool</h3>
+                    <p>Use the rail devtool button to create or edit algsets, then run them in the trainer.</p>
+                </section>
             </div>
         </div>
     `;
@@ -1063,6 +1169,12 @@ window.changeTheme = function(theme) {
     AppState.settings.theme = theme;
     saveSettings();
     applyTheme();
+    document.querySelector('.modal')?.remove();
+    openSettingsModal();
+};
+
+window.cycleTheme = function() {
+    window.changeTheme(AppState.settings.theme === 'dark' ? 'light' : 'dark');
 };
 
 window.changeCueDuration = function(value) {
@@ -1232,10 +1344,45 @@ function openScrambleDetailModal() {
     });
 }
 
+function openHintModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    const current = AppState.currentScramble;
+    modal.innerHTML = `
+        <div class="modal-content hint-popup-inner">
+            <div class="modal-header">
+                <h2>${current?.caseName || 'Hint'}</h2>
+                <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+            </div>
+            <div class="modal-body hint-body">
+                ${current?.alg ? `<pre>${current.alg}</pre>` : '<p>No algorithm hint for this case.</p>'}
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    });
+}
+
+function openPreviousScrambleModal() {
+    if (!AppState.previousScramble) return;
+
+    const originalCurrent = AppState.currentScramble;
+    AppState.currentScramble = AppState.previousScramble;
+    openScrambleDetailModal();
+    AppState.currentScramble = originalCurrent;
+}
+
 Object.assign(window, {
     initApp,
     openSettingsModal,
     openAboutModal,
+    openHelpModal,
+    openHintModal,
     openScrambleDetailModal
 });
 
