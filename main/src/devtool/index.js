@@ -1,5 +1,5 @@
 import { ensureFeatureModules, ensureXlsxScript } from '../moduleLoader.js';
-import { AppState, DEFAULT_ALGSET, generateNewScramble, renderApp, saveDevelopingJSONs, saveLastScreen, setupEventListeners } from '../training.js';
+import { AppState, DEFAULT_ALGSET, generateNewScramble, renderApp, saveDevelopingJSONs, saveLastScreen } from '../training.js';
 import {
     DEFAULT_LAYER,
     DOWN_MOVE_OPTIONS,
@@ -26,11 +26,8 @@ import {
 } from './model.js';
 import {
     clearTemplate,
-    loadAlgorithmPreferences,
     loadSelection,
     loadTemplate,
-    saveAlgorithmInputMode,
-    saveAlgorithmNotationType,
     saveSelection,
     saveTemplate
 } from './storage.js';
@@ -85,7 +82,6 @@ function readFileAsText(file) {
 
 class JSONCreator {
     constructor() {
-        const preferences = loadAlgorithmPreferences();
         this.root = null;
         this.abortController = null;
         this.shapeRenderPromise = null;
@@ -101,11 +97,8 @@ class JSONCreator {
             templateDraft: null,
             sidebarHidden: false,
             algorithm: {
-                enabled: preferences.algorithmInputMode,
-                notation: preferences.algorithmNotationType,
                 text: '',
-                tempHex: null,
-                lastApplied: ''
+                tempHex: null
             },
             modal: null,
             contextMenu: null,
@@ -143,6 +136,7 @@ class JSONCreator {
         this.root.addEventListener('input', (event) => this.handleInput(event), options);
         this.root.addEventListener('change', (event) => this.handleChange(event), options);
         this.root.addEventListener('keydown', (event) => this.handleRootKeydown(event), options);
+        this.root.addEventListener('scroll', () => this.closeInfoBoxes(), { ...options, capture: true });
         document.addEventListener('keydown', (event) => this.handleDocumentKeydown(event), options);
     }
 
@@ -183,6 +177,8 @@ class JSONCreator {
 
     render() {
         if (!this.root) return;
+        const runBodyScrollTop = this.root.querySelector('.run-modal-body')?.scrollTop ?? 0;
+        if (this.state.run && runBodyScrollTop) this.state.run.scrollTop = runBodyScrollTop;
         this.root.innerHTML = `
             ${this.renderTopbar()}
             <div class="json-creator-main">
@@ -196,10 +192,13 @@ class JSONCreator {
             ${this.renderModal()}
             ${this.renderRunModal()}
         `;
-        this.afterRender();
+        this.afterRender({ runBodyScrollTop });
     }
 
     renderTopbar() {
+        const themeIcon = AppState.settings.theme === 'dark'
+            ? '<path d="M12 3v2"/><path d="M12 19v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M3 12h2"/><path d="M19 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/><circle cx="12" cy="12" r="4"/>'
+            : '<path d="M21 12.79A8.5 8.5 0 1 1 11.21 3 6.5 6.5 0 0 0 21 12.79z"/>';
         return `
             <div class="json-creator-topbar">
                 <div style="display:flex;align-items:center;gap:12px;">
@@ -212,6 +211,7 @@ class JSONCreator {
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
                     <button class="json-creator-icon-btn" data-action="open-data-management" title="Data Management"><img src="viz/data.svg" width="16" height="16" alt=""></button>
+                    <button class="json-creator-icon-btn" data-action="toggle-theme" title="Toggle Theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${themeIcon}</svg></button>
                     <button class="json-creator-icon-btn" data-action="extract-json" title="Extract JSON"><img src="viz/extract.svg" width="16" height="16" alt=""></button>
                     <button class="json-creator-icon-btn" data-action="run-root" title="Run"><img src="viz/run.svg" width="16" height="16" alt=""></button>
                     <button class="json-creator-icon-btn" data-action="close" title="Quit"><img src="viz/exit.svg" width="16" height="16" alt=""></button>
@@ -264,7 +264,7 @@ class JSONCreator {
         let subtitle = 'Case Editor';
         if (this.state.editor.type === 'case' && isCase(selected)) {
             const name = selected.caseName || this.state.editorPath.split('/').pop();
-            title = `Case: ${escapeHtml(name)} <button class="json-creator-icon-btn" data-action="run-case" title="Run This Case" style="margin-left:8px;display:inline-flex;vertical-align:middle;"><img src="viz/run.svg" width="14" height="14" alt=""></button>`;
+            title = `Case: ${escapeHtml(name)} <button class="json-creator-icon-btn" data-action="run-case" title="Run This Case" style="margin-left:8px;display:inline-flex;vertical-align:middle;"><img src="viz/run.svg" width="14" height="14" alt=""></button><button class="json-creator-icon-btn" data-action="reset-case" title="Reset Case to Template" style="margin-left:4px;display:inline-flex;vertical-align:middle;"><img src="viz/reset.svg" width="14" height="14" alt=""></button>`;
             subtitle = '';
         } else if (this.state.editor.type === 'template') {
             title = `Case Template <button class="json-creator-icon-btn" data-action="save-template" title="Save Template" style="margin-left:8px;display:inline-flex;vertical-align:middle;"><img src="viz/save.svg" width="14" height="14" alt=""></button> <button class="json-creator-icon-btn" data-action="clear-template" title="Clear Template" style="margin-left:4px;display:inline-flex;vertical-align:middle;"><img src="viz/reset.svg" width="14" height="14" alt=""></button>`;
@@ -273,8 +273,10 @@ class JSONCreator {
 
         return `
             <div class="json-creator-content-header">
-                <h3 id="jsonCreatorTitle">${title}</h3>
-                <p id="jsonCreatorSubtitle">${subtitle}</p>
+                <div class="json-creator-title-block">
+                    <h3 id="jsonCreatorTitle">${title}</h3>
+                    <p id="jsonCreatorSubtitle">${subtitle}</p>
+                </div>
             </div>
         `;
     }
@@ -316,12 +318,7 @@ class JSONCreator {
     renderShapeTab(item, template) {
         const prefix = template ? 'template' : 'case';
         return `
-            <div class="json-creator-section">
-                <div class="algorithm-mode-group">
-                    <label class="algorithm-mode-label"><input type="checkbox" data-action="toggle-algorithm-mode" ${this.state.algorithm.enabled ? 'checked' : ''}> Input shape using algorithm text</label>
-                </div>
-                ${this.state.algorithm.enabled ? this.renderAlgorithmInput() : ''}
-            </div>
+            ${this.renderAlgorithmInput()}
             <div class="shape-layer-grid">
                 ${this.renderLayerInput('top', item.inputTop || DEFAULT_LAYER, prefix)}
                 ${this.renderLayerInput('bottom', item.inputBottom || DEFAULT_LAYER, prefix)}
@@ -357,14 +354,10 @@ class JSONCreator {
 
     renderAlgorithmInput() {
         return `
-            <div class="algorithm-input-section">
-                <div class="algorithm-input-controls">
-                    <input id="algorithmTextInput" class="algorithm-text-input" data-action="algorithm-input" placeholder="Input algorithm (normal notation, karnotation, or shorthand)" value="${escapeHtml(this.state.algorithm.text)}">
-                    <button class="algorithm-apply-btn" data-action="apply-algorithm">Apply</button>
-                </div>
-                <div class="algorithm-applied-actions" ${this.state.algorithm.lastApplied ? '' : 'style="display:none;"'}>
-                    <button class="algorithm-copy-btn" data-action="copy-algorithm-field">Copy this algorithm to the algorithm field below</button>
-                </div>
+            <div class="algorithm-input-bar">
+                <input id="algorithmTextInput" class="algorithm-text-input" data-action="algorithm-input" placeholder="Input algorithm text" value="${escapeHtml(this.state.algorithm.text)}">
+                <button class="algorithm-apply-btn" data-action="apply-algorithm" title="Apply this algorithm">Apply</button>
+                <button class="algorithm-apply-btn" data-action="apply-append-algorithm" title="Apply this algorithm and append it to the algorithm field in the additional information tab">Apply & Append</button>
             </div>
         `;
     }
@@ -515,11 +508,11 @@ class JSONCreator {
     renderRootSelector() {
         const names = Object.keys(AppState.developingJSONs);
         return `
-            <div class="root-selector-modal" style="position:fixed;top:52px;left:168px;z-index:100001;background:var(--devtool-panel,#fff);border:1px solid var(--devtool-border,#ccc);border-radius:6px;min-width:220px;box-shadow:0 12px 24px rgba(0,0,0,.28);">
-                <div id="rootList" style="max-height:400px;overflow-y:auto;">
-                    ${names.map((root) => `<div class="root-list-item ${root === this.state.activeRoot ? 'active' : ''}" data-action="select-root" data-root="${escapeHtml(root)}" style="padding:10px 12px;cursor:pointer;">${escapeHtml(root)}</div>`).join('')}
+            <div class="root-selector-modal">
+                <div id="rootList" class="root-list">
+                    ${names.map((root) => `<div class="root-list-item ${root === this.state.activeRoot ? 'active' : ''}" data-action="select-root" data-root="${escapeHtml(root)}">${escapeHtml(root)}</div>`).join('')}
                 </div>
-                <div style="border-top:1px solid var(--devtool-border,#ccc);padding:8px;"><button class="json-creator-btn" data-action="add-root" style="width:100%;">New Root</button></div>
+                <div class="root-selector-footer"><button class="json-creator-btn" data-action="add-root">New Root</button></div>
             </div>
         `;
     }
@@ -617,11 +610,18 @@ class JSONCreator {
         `;
     }
 
-    afterRender() {
+    afterRender(options = {}) {
         const rename = this.root?.querySelector('#renameInput');
         if (rename) {
             rename.focus();
             rename.select();
+        }
+        const runBody = this.root?.querySelector('.run-modal-body');
+        if (runBody) {
+            runBody.scrollTop = this.state.run?.scrollTop ?? options.runBodyScrollTop ?? 0;
+            runBody.addEventListener('scroll', () => {
+                if (this.state.run) this.state.run.scrollTop = runBody.scrollTop;
+            });
         }
         this.renderShapeVisuals();
     }
@@ -633,6 +633,7 @@ class JSONCreator {
             this.toggleInfoBox(infoButton);
             return;
         }
+        if (!target.closest('.info-box')) this.closeInfoBoxes();
         const actionElement = target.closest('[data-action]');
         if (!actionElement || !this.root?.contains(actionElement)) {
             if (target.id === 'jsonCreatorTree') {
@@ -662,11 +663,13 @@ class JSONCreator {
         if (action === 'paste') return this.paste();
         if (action === 'delete') return this.deleteSelected();
         if (action === 'open-extra-tools') return this.openExtraTools(event);
-        if (action === 'open-root-selector') return this.update({ modal: { type: 'root-selector' }, contextMenu: null });
+        if (action === 'open-root-selector') return this.update({ modal: this.state.modal?.type === 'root-selector' ? null : { type: 'root-selector' }, contextMenu: null });
         if (action === 'select-root') return this.switchRoot(actionElement.dataset.root);
         if (action === 'add-root') return this.openRename('New Root', '', (name) => this.addRoot(name));
+        if (action === 'toggle-theme') return this.toggleTheme();
         if (action === 'case-tab' || action === 'template-tab') return this.setEditor(this.state.editor.type, actionElement.dataset.tab);
         if (action === 'run-case') return this.runSelectedCase();
+        if (action === 'reset-case') return this.resetCase();
         if (action === 'run-root') return this.runJSON();
         if (action === 'extract-json') return this.extractJSON();
         if (action === 'open-data-management') return this.update({ modal: { type: 'data-management' } });
@@ -690,10 +693,10 @@ class JSONCreator {
         if (action === 'set-as-template') return this.setSelectedAsTemplate();
         if (action === 'reset-layer') return this.resetLayer(actionElement.dataset.layer);
         if (action === 'apply-algorithm') return this.applyAlgorithmInput();
-        if (action === 'copy-algorithm-field') return this.copyAlgorithmToField();
+        if (action === 'apply-append-algorithm') return this.applyAlgorithmInput(true);
         if (action === 'add-constraint') return this.addConstraint(actionElement.dataset.prefix);
         if (action === 'remove-constraint') return this.removeConstraint(actionElement.dataset.position);
-        if (action === 'close-run') return this.update({ run: null });
+        if (action === 'close-run') return this.closeRun();
         if (action === 'stop-run') return this.stopRun();
         return this.handleContextAction(action);
     }
@@ -713,6 +716,19 @@ class JSONCreator {
             this.openContextMenu(event.clientX, event.clientY, 'item', row.dataset.path);
             return;
         }
+        const rootRow = event.target.closest('.root-list-item');
+        if (rootRow) {
+            event.preventDefault();
+            this.state.contextMenu = {
+                type: 'root-item',
+                path: '',
+                rootName: rootRow.dataset.root,
+                x: Math.max(10, Math.min(event.clientX, window.innerWidth - 210)),
+                y: Math.max(10, Math.min(event.clientY, window.innerHeight - 260))
+            };
+            this.render();
+            return;
+        }
         if (event.target.id === 'jsonCreatorTree') {
             event.preventDefault();
             this.openContextMenu(event.clientX, event.clientY, 'root', '');
@@ -728,8 +744,6 @@ class JSONCreator {
 
     handleChange(event) {
         const target = event.target;
-        if (target.dataset.action === 'toggle-algorithm-mode') return this.toggleAlgorithmInputMode(target.checked);
-        if (target.dataset.action === 'algorithm-notation') return this.setAlgorithmNotationType(target.value);
         if (target.dataset.action === 'parity-mode') return this.updateParityMode(target.dataset.prefix, target.value);
         if (target.matches('input[type="checkbox"][data-field]')) {
             const value = target.dataset.valueType === 'number' ? Number(target.dataset.value) : target.dataset.value;
@@ -923,8 +937,17 @@ class JSONCreator {
                 { label: 'Case Template', action: 'open-case-template' },
                 { label: 'Import Data to Root', action: 'import-root-data' },
                 { label: 'Reset Root', action: 'reset-root' },
-                { label: 'Bulk Import', action: 'open-bulk-import' },
-                { label: 'Data Management', action: 'open-data-management' }
+                { label: 'Bulk Import', action: 'open-bulk-import' }
+            ];
+        }
+        if (menu.type === 'root-item') {
+            const isLastRoot = Object.keys(AppState.developingJSONs).length <= 1;
+            return [
+                { label: 'Rename', action: 'rename-root' },
+                { label: 'Export as JSON', action: 'export-root-json' },
+                { label: 'Reset', action: 'reset-root-item' },
+                { separator: true },
+                { label: isLastRoot ? 'Reset Default Root' : 'Delete', action: 'delete-root' }
             ];
         }
         if (menu.type === 'root') {
@@ -949,6 +972,7 @@ class JSONCreator {
             ...folderItems,
             { label: 'Rename', action: 'rename-selected' },
             { label: 'Run', action: 'run-context' },
+            { label: 'Reset Case', action: 'reset-case-context', disabled: !isCase(item) },
             { label: 'Set as Template', action: 'set-as-template', disabled: !isCase(item) },
             { separator: true },
             { label: 'Copy', action: 'copy' },
@@ -964,6 +988,13 @@ class JSONCreator {
     handleContextAction(action) {
         const menu = this.state.contextMenu;
         if (!menu) return;
+        if (action === 'rename-root') {
+            const rootName = menu.rootName;
+            return this.openRename(`Rename ${rootName}`, rootName, (newName) => this.renameRoot(rootName, newName));
+        }
+        if (action === 'export-root-json') return this.exportRootJSON(menu.rootName);
+        if (action === 'reset-root-item') return this.resetRootName(menu.rootName);
+        if (action === 'delete-root') return this.deleteRoot(menu.rootName);
         if (action === 'new-case') return this.newCase(menu.path);
         if (action === 'new-folder') return this.newFolder(menu.path);
         if (action === 'open-bulk-import') return this.update({ modal: { type: 'bulk-import', targetPath: menu.path }, contextMenu: null });
@@ -972,6 +1003,7 @@ class JSONCreator {
             return this.openRename(`Rename ${name}`, name, (newName) => this.renamePath(menu.path, newName));
         }
         if (action === 'run-context') return this.runPath(menu.path);
+        if (action === 'reset-case-context') return this.resetCase(menu.path);
         if (action === 'set-as-template') return this.setSelectedAsTemplate(menu.path);
         if (action === 'copy') {
             this.copy(menu.path);
@@ -1002,12 +1034,16 @@ class JSONCreator {
         const box = button.parentElement?.querySelector('.info-box');
         if (!box) return;
         const visible = box.classList.contains('show');
-        this.root?.querySelectorAll('.info-box.show').forEach((openBox) => openBox.classList.remove('show'));
+        this.closeInfoBoxes();
         if (visible) return;
         const rect = button.getBoundingClientRect();
         box.style.left = `${Math.min(rect.left, window.innerWidth - 320)}px`;
         box.style.top = `${rect.bottom + 8}px`;
         box.classList.add('show');
+    }
+
+    closeInfoBoxes() {
+        this.root?.querySelectorAll('.info-box.show').forEach((openBox) => openBox.classList.remove('show'));
     }
 
     switchRoot(rootName) {
@@ -1035,6 +1071,67 @@ class JSONCreator {
         saveDevelopingJSONs();
         this.closeModal(false);
         this.switchRoot(rootName);
+    }
+
+    renameRoot(oldName, newName) {
+        const rootName = String(newName || '').trim();
+        if (!oldName || !rootName || oldName === rootName) return this.closeModal(false);
+        if (AppState.developingJSONs[rootName]) return showFloatingMessage('A root with this name already exists', 'error');
+        this.persistRoot();
+        AppState.developingJSONs[rootName] = AppState.developingJSONs[oldName] || {};
+        delete AppState.developingJSONs[oldName];
+        if (AppState.activeDevelopingJSON === oldName) AppState.activeDevelopingJSON = rootName;
+        saveDevelopingJSONs();
+        this.closeModal(false);
+        this.switchRoot(AppState.activeDevelopingJSON);
+    }
+
+    exportRootJSON(rootName) {
+        const root = AppState.developingJSONs[rootName];
+        if (!root) return;
+        if (rootName === this.state.activeRoot) this.persistRoot();
+        downloadJSON(rootName, rootName === this.state.activeRoot ? this.state.tree : root);
+        this.update({ contextMenu: null });
+    }
+
+    resetRootName(rootName) {
+        if (!rootName || !AppState.developingJSONs[rootName]) return;
+        AppState.developingJSONs[rootName] = normalizeTree(DEFAULT_ALGSET);
+        if (rootName === this.state.activeRoot) {
+            this.state.tree = clone(AppState.developingJSONs[rootName]);
+            this.state.selectedPath = '';
+            this.state.editorPath = '';
+            this.state.editor = { type: 'welcome', tab: 'shape' };
+            this.state.expandedFolders = new Set(collectFolders(this.state.tree).map((folder) => folder.path));
+            this.state.caseTemplate = null;
+            clearTemplate(rootName);
+        }
+        saveDevelopingJSONs();
+        showFloatingMessage('Root reset', 'success');
+        this.update({ contextMenu: null });
+    }
+
+    deleteRoot(rootName) {
+        if (!rootName || !AppState.developingJSONs[rootName]) return;
+        const roots = Object.keys(AppState.developingJSONs);
+        if (roots.length <= 1) {
+            this.resetRootName(rootName);
+            return;
+        }
+        delete AppState.developingJSONs[rootName];
+        if (AppState.activeDevelopingJSON === rootName) {
+            AppState.activeDevelopingJSON = Object.keys(AppState.developingJSONs)[0];
+        }
+        saveDevelopingJSONs();
+        this.state.contextMenu = null;
+        this.switchRoot(AppState.activeDevelopingJSON);
+    }
+
+    toggleTheme() {
+        AppState.settings.theme = AppState.settings.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('sq1Settings', JSON.stringify(AppState.settings));
+        document.body.className = `theme-${AppState.settings.theme}`;
+        this.render();
     }
 
     extractJSON() {
@@ -1092,6 +1189,18 @@ class JSONCreator {
             showFloatingMessage('Case set as template', 'success');
             this.closeModal(false);
         });
+    }
+
+    resetCase(path = this.state.editorPath) {
+        const item = getNode(this.state.tree, path);
+        if (!isCase(item)) return showFloatingMessage('No case selected', 'info');
+        const info = getParent(this.state.tree, path);
+        if (!info) return;
+        const name = info.key;
+        info.parent[name] = createCaseFromTemplate(name, this.state.caseTemplate);
+        this.persistRoot();
+        showFloatingMessage('Case reset to template', 'success');
+        this.render();
     }
 
     updateLayer(layer, rawValue) {
@@ -1169,50 +1278,26 @@ class JSONCreator {
         this.state.algorithm.tempHex = null;
     }
 
-    toggleAlgorithmInputMode(enabled) {
-        this.state.algorithm.enabled = enabled;
-        if (!enabled) {
-            this.state.algorithm.text = '';
-            this.state.algorithm.tempHex = null;
-        }
-        saveAlgorithmInputMode(enabled);
-        this.render();
-    }
-
-    setAlgorithmNotationType(type) {
-        this.state.algorithm.notation = type || 'normal';
-        saveAlgorithmNotationType(this.state.algorithm.notation);
-        this.render();
-    }
-
-    applyAlgorithmInput() {
+    applyAlgorithmInput(appendToAlgorithm = false) {
         const target = this.getEditingTarget();
         if (!target) return showFloatingMessage('No case is open', 'error');
-        if (!this.state.algorithm.text.trim()) return showFloatingMessage('No algorithm to apply', 'error');
+        const algorithmText = this.state.algorithm.text.trim();
+        if (!algorithmText) return showFloatingMessage('No algorithm to apply', 'error');
         let hex;
         try {
-            hex = normalizeAlgorithmInput(this.state.algorithm.text, 'inverse');
+            hex = normalizeAlgorithmInput(algorithmText, 'inverse');
         } catch (error) {
             showFloatingMessage(`Invalid algorithm: ${error.message}`, 'error');
             return;
         }
         target.inputTop = hex.tlHex || target.inputTop;
         target.inputBottom = hex.blHex || target.inputBottom;
-        this.state.algorithm.lastApplied = this.state.algorithm.text;
-        this.state.algorithm.text = '';
         this.state.algorithm.tempHex = null;
+        if (appendToAlgorithm && isCase(target)) {
+            target.alg = [target.alg || '', algorithmText].filter(Boolean).join(' ').trim();
+        }
         if (this.state.editor.type === 'case') this.persistRoot();
-        showFloatingMessage('Algorithm applied successfully', 'success');
-        this.render();
-    }
-
-    copyAlgorithmToField() {
-        const item = this.getEditorCase();
-        if (!isCase(item) || !this.state.algorithm.lastApplied) return;
-        item.alg = this.state.algorithm.lastApplied;
-        this.state.algorithm.lastApplied = '';
-        this.persistRoot();
-        showFloatingMessage('Algorithm copied to algorithm field', 'success');
+        showFloatingMessage(appendToAlgorithm ? 'Algorithm applied and appended' : 'Algorithm applied successfully', 'success');
         this.render();
     }
 
@@ -1272,7 +1357,8 @@ class JSONCreator {
             placeholderCorner: '#6687a8',
             emptyFill: '#071321ff',
             emptyStroke: '#244b70',
-            ringStroke: '#183653'
+            ringStroke: '#2f5d88',
+            pieceStroke: '#315b83'
         };
     }
 
@@ -1418,7 +1504,7 @@ class JSONCreator {
 
     openRunModal(data, name) {
         const cases = collectCases(isCase(data) ? { [name]: data } : data);
-        this.state.run = { name, cases, results: [], progress: 0, stopped: false, done: false };
+        this.state.run = { name, cases, results: [], progress: 0, stopped: false, done: false, scrollTop: 0 };
         this.render();
         void this.generateRunResults();
     }
@@ -1510,7 +1596,7 @@ class JSONCreator {
                 });
             }
             run.progress = Math.round(((index + 1) / RUN_COUNT) * 100);
-            this.render();
+            if ((index + 1) % 5 === 0 || index === RUN_COUNT - 1) this.render();
             await new Promise((resolve) => setTimeout(resolve, 50));
         }
         if (this.state.run) {
@@ -1523,6 +1609,12 @@ class JSONCreator {
         if (!this.state.run) return;
         this.state.run.stopped = true;
         this.state.run.done = true;
+        this.render();
+    }
+
+    closeRun() {
+        if (this.state.run) this.state.run.stopped = true;
+        this.state.run = null;
         this.render();
     }
 
@@ -1565,16 +1657,13 @@ class JSONCreator {
     }
 
     close() {
-        this.openConfirm('Close SquanX', 'Close SquanX? All changes are auto-saved.', () => {
-            this.persistRoot();
-            saveLastScreen('training');
-            this.abortController?.abort();
-            this.root?.remove();
-            this.root = null;
-            renderApp();
-            setupEventListeners();
-            if (AppState.selectedCases.length > 0) void generateNewScramble();
-        });
+        this.persistRoot();
+        saveLastScreen('training');
+        this.abortController?.abort();
+        this.root?.remove();
+        this.root = null;
+        renderApp();
+        if (AppState.selectedCases.length > 0) void generateNewScramble();
     }
 }
 

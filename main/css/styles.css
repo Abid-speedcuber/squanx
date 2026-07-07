@@ -232,6 +232,7 @@ body.theme-light .squango-go {
 
 .rail-toggle,
 .rail-btn {
+    position: relative;
     height: 44px;
     width: 100%;
     display: flex;
@@ -274,6 +275,31 @@ body.theme-light .squango-go {
 
 .rail.collapsed .rail-btn-label {
     display: none;
+}
+
+.rail.collapsed .rail-toggle::after,
+.rail.collapsed .rail-btn::after {
+    content: attr(data-tip);
+    position: fixed;
+    left: 58px;
+    z-index: 1000;
+    padding: 6px 9px;
+    border: 1px solid var(--divider-soft);
+    border-radius: 6px;
+    background: var(--panel-bg);
+    color: var(--text-main);
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(1px);
+    transition: opacity 0.12s ease;
+}
+
+.rail.collapsed .rail-toggle:hover::after,
+.rail.collapsed .rail-btn:hover::after {
+    opacity: 1;
 }
 
 .rail-actions,
@@ -559,6 +585,27 @@ select.settings-input {
     border-color: var(--border-col);
     background: var(--field-focus-bg);
     box-shadow: 0 0 0 2px rgba(117, 179, 240, 0.2);
+}
+
+.algset-section {
+    margin-bottom: 20px;
+}
+
+.algset-section h3 {
+    margin: 0 0 10px;
+    color: var(--text-strong);
+    font-size: 0.95rem;
+}
+
+.algset-import-footer {
+    padding-top: 14px;
+    border-top: 1px solid var(--divider-soft);
+}
+
+.empty-state {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 24px;
 }
 
 textarea.settings-input {

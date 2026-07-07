@@ -1323,6 +1323,8 @@ body.theme-dark .json-creator-fullscreen {
     max-width: none !important;
     border-radius: 10px !important;
     overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
     background: var(--devtool-run-bg) !important;
     color: var(--devtool-run-card-text) !important;
 }
@@ -1345,6 +1347,10 @@ body.theme-dark .json-creator-fullscreen {
 .run-modal-body {
     background: var(--devtool-run-bg) !important;
     padding: 20px !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
 }
 
 .scramble-result-item {
@@ -1388,6 +1394,31 @@ body.theme-dark .json-creator-fullscreen {
 }
 
 /* Devtool polish fixes */
+.json-creator-fullscreen .json-creator-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.12;
+}
+
+.json-creator-fullscreen .json-creator-title-block p {
+    margin: 0 !important;
+    font-size: 12px !important;
+    color: var(--devtool-muted) !important;
+}
+
+.json-creator-fullscreen .json-creator-welcome {
+    background: transparent !important;
+}
+
+.json-creator-fullscreen .algorithm-input-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: stretch;
+    margin: 0 0 16px;
+}
+
 .json-creator-fullscreen .algorithm-input-section {
     background: var(--devtool-panel-raised) !important;
     border: 1px solid var(--devtool-border) !important;
@@ -1402,6 +1433,51 @@ body.theme-dark .json-creator-fullscreen {
     gap: 8px !important;
     align-items: stretch !important;
     margin: 0 !important;
+}
+
+.json-creator-fullscreen .root-selector-modal {
+    position: fixed;
+    top: 52px;
+    left: 168px;
+    z-index: 100001;
+    min-width: 240px;
+    overflow: hidden;
+    border: 1px solid var(--devtool-border);
+    border-radius: 8px;
+    background: var(--devtool-panel);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.json-creator-fullscreen .root-list {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 6px;
+}
+
+.json-creator-fullscreen .root-list-item {
+    padding: 10px 12px;
+    cursor: pointer;
+    border-radius: 6px;
+    color: var(--devtool-text);
+}
+
+.json-creator-fullscreen .root-list-item:hover {
+    background: var(--devtool-hover);
+}
+
+.json-creator-fullscreen .root-list-item.active {
+    background: var(--devtool-active);
+    color: var(--devtool-strong);
+    font-weight: 700;
+}
+
+.json-creator-fullscreen .root-selector-footer {
+    border-top: 1px solid var(--devtool-border);
+    padding: 8px;
+}
+
+.json-creator-fullscreen .root-selector-footer .json-creator-btn {
+    width: 100%;
 }
 
 .json-creator-fullscreen .algorithm-text-input {

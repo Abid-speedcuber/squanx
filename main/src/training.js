@@ -234,7 +234,6 @@ async function initApp() {
     } else {
         saveLastScreen('training');
         renderApp();
-        setupEventListeners();
         return 'trainer';
     }
 }
@@ -256,10 +255,10 @@ function trainerIconSprite() {
     return `
         <svg aria-hidden="true" style="display:none">
             <symbol id="rail-icon-cases" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
-            <symbol id="rail-icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
             <symbol id="rail-icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 .9-1 1.7"/><line x1="12" y1="17" x2="12" y2="17"/></symbol>
             <symbol id="rail-icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></symbol>
-            <symbol id="rail-icon-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+            <symbol id="rail-icon-import" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+            <symbol id="rail-icon-export" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
             <symbol id="rail-icon-devtool" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/><path d="m14.5 4-5 16"/></symbol>
             <symbol id="icon-lightbulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M8.5 14.5c-1.6-1.1-2.5-2.9-2.5-4.8A6 6 0 0 1 18 9.7c0 1.9-.9 3.7-2.5 4.8-.6.4-.9 1-.9 1.7V17H9.4v-.8c0-.7-.3-1.3-.9-1.7z"/></symbol>
         </svg>
@@ -303,13 +302,13 @@ function renderApp() {
                     </button>
                     <div class="rail-actions">
                         ${railButton('cases', 'rail-icon-cases', 'Case selector')}
-                        ${railButton('search', 'rail-icon-search', 'Algsets')}
                         ${railButton('help', 'rail-icon-help', 'Help')}
                         ${railButton('settings', 'rail-icon-settings', 'Settings')}
+                        ${railButton('devtool', 'rail-icon-devtool', 'Devtool')}
                     </div>
                     <div class="rail-extra">
-                        ${railButton('upload', 'rail-icon-upload', 'Upload data')}
-                        ${railButton('devtool', 'rail-icon-devtool', 'Devtool')}
+                        ${railButton('import-data', 'rail-icon-import', "Import all app's data")}
+                        ${railButton('export-data', 'rail-icon-export', "Export all app's data")}
                     </div>
                 </nav>
 
@@ -340,11 +339,11 @@ function renderApp() {
 
             <nav class="mobilebar" id="mobilebar">
                 ${railButton('cases', 'rail-icon-cases', 'Case selector')}
-                ${railButton('search', 'rail-icon-search', 'Algsets')}
                 ${railButton('help', 'rail-icon-help', 'Help')}
                 ${railButton('settings', 'rail-icon-settings', 'Settings')}
-                ${railButton('upload', 'rail-icon-upload', 'Upload data')}
                 ${railButton('devtool', 'rail-icon-devtool', 'Devtool')}
+                ${railButton('import-data', 'rail-icon-import', "Import all app's data")}
+                ${railButton('export-data', 'rail-icon-export', "Export all app's data")}
             </nav>
         </div>
     `;
@@ -508,23 +507,119 @@ function handleRailAction(action) {
                 openAlgsetSelectorModal();
             }
             break;
-        case 'search':
-            openAlgsetSelectorModal();
-            break;
         case 'help':
             openHelpModal();
             break;
         case 'settings':
             openSettingsModal();
             break;
-        case 'upload':
-            window.openImportAlgsetModal();
+        case 'import-data':
+            openImportAllDataModal();
+            break;
+        case 'export-data':
+            exportAllAppData();
             break;
         case 'devtool':
             void window.showJsonCreatorFullscreen();
             break;
     }
 }
+
+function downloadJSONFile(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function exportAllAppData() {
+    downloadJSONFile('squanx-app-data.json', {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        trainingJSONs: AppState.trainingJSONs,
+        activeTrainingJSON: AppState.activeTrainingJSON,
+        selectedCases: AppState.selectedCases,
+        developingJSONs: AppState.developingJSONs,
+        activeDevelopingJSON: AppState.activeDevelopingJSON,
+        sessionTimes: AppState.sessionTimes,
+        settings: AppState.settings
+    });
+}
+
+function openImportAllDataModal() {
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Import App Data</h2>
+                <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-group">
+                    <label class="settings-label">Paste JSON or Drag & Drop File</label>
+                    <textarea class="settings-input" id="importAllDataInput" placeholder="Paste exported SquanX app data here..."
+                        ondragover="event.preventDefault();"
+                        ondrop="handleAllDataFileDrop(event)"></textarea>
+                </div>
+                <div class="button-group">
+                    <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button class="btn btn-primary" onclick="importAllAppData()">Import</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) modal.remove();
+    });
+}
+
+window.handleAllDataFileDrop = function(event) {
+    event.preventDefault();
+    const file = event.dataTransfer.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => {
+        document.getElementById('importAllDataInput').value = loadEvent.target.result;
+    };
+    reader.readAsText(file);
+};
+
+window.importAllAppData = function() {
+    const jsonText = document.getElementById('importAllDataInput')?.value.trim();
+    if (!jsonText) return showFloatingMessage('Please paste or drop an app data export', 'error');
+    try {
+        const data = JSON.parse(jsonText);
+        AppState.trainingJSONs = data.trainingJSONs || {};
+        AppState.activeTrainingJSON = data.activeTrainingJSON && AppState.trainingJSONs[data.activeTrainingJSON]
+            ? data.activeTrainingJSON
+            : Object.keys(AppState.trainingJSONs)[0] || null;
+        AppState.selectedCases = Array.isArray(data.selectedCases) ? data.selectedCases : [];
+        AppState.developingJSONs = data.developingJSONs || { default: DEFAULT_ALGSET };
+        AppState.activeDevelopingJSON = data.activeDevelopingJSON && AppState.developingJSONs[data.activeDevelopingJSON]
+            ? data.activeDevelopingJSON
+            : Object.keys(AppState.developingJSONs)[0] || 'default';
+        AppState.sessionTimes = data.sessionTimes || {};
+        AppState.settings = { ...AppState.settings, ...(data.settings || {}) };
+        saveTrainingJSONs();
+        saveDevelopingJSONs();
+        saveSelectedCases();
+        saveSessionTimes();
+        saveSettings();
+        applyTheme();
+        document.querySelector('.modal')?.remove();
+        renderApp();
+        showFloatingMessage('App data imported', 'success');
+    } catch (error) {
+        showFloatingMessage(`Invalid app data: ${error.message}`, 'error');
+    }
+};
 
 function removeLastSolve() {
     if (!AppState.activeTrainingJSON || !AppState.sessionTimes[AppState.activeTrainingJSON]?.length) {
@@ -758,17 +853,13 @@ function openAlgsetSelectorModal() {
                 <h2>Select Algset</h2>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
-            <div class="algset-tabs">
-                <button class="algset-tab active" onclick="switchAlgsetTab('default')" id="tab-default">Default</button>
-                <button class="algset-tab" onclick="switchAlgsetTab('imported')" id="tab-imported">Imported</button>
-            </div>
             <div class="modal-body">
                 <div id="algsetContent"></div>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
-    renderAlgsetTab('default');
+    renderAlgsetSelectorContent();
 
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
@@ -786,22 +877,19 @@ window.switchAlgsetTab = function(tab) {
             t.classList.remove('active');
         }
     });
-    renderAlgsetTab(tab);
+    renderAlgsetSelectorContent();
 };
 
-function renderAlgsetTab(tab) {
+function renderAlgsetSelectorContent() {
     const content = document.getElementById('algsetContent');
     if (!content) return;
 
-    if (tab === 'default') {
-        const defaultAlgsets = [
-            'eo.json',
-            'cp.json',
-            'ep.json',
-            'cubeshape.json'
-        ];
+    const defaultAlgsets = ['eo.json', 'cp.json', 'ep.json', 'cubeshape.json'];
+    const importedAlgsets = Object.keys(AppState.trainingJSONs);
 
-        content.innerHTML = `
+    content.innerHTML = `
+        <section class="algset-section">
+            <h3>Default</h3>
             <div class="algset-list">
                 ${defaultAlgsets.map(name => `
                     <div class="algset-item" onclick="selectDefaultAlgset('${name}')">
@@ -809,14 +897,12 @@ function renderAlgsetTab(tab) {
                     </div>
                 `).join('')}
             </div>
-        `;
-    } else {
-        const importedAlgsets = Object.keys(AppState.trainingJSONs);
-        
-        content.innerHTML = `
+        </section>
+        <section class="algset-section">
+            <h3>Imported</h3>
             <div class="algset-list">
-                ${importedAlgsets.length === 0 ? 
-                    '<p style="color: #888; text-align: center; padding: 40px;">No imported algsets</p>' :
+                ${importedAlgsets.length === 0 ?
+                    '<p class="empty-state">No imported algsets</p>' :
                     importedAlgsets.map(name => `
                         <div class="algset-item ${name === AppState.activeTrainingJSON ? 'active' : ''}" onclick="selectImportedAlgset('${name}')">
                             <span>${name}</span>
@@ -825,11 +911,11 @@ function renderAlgsetTab(tab) {
                     `).join('')
                 }
             </div>
-            <div style="margin-top: 16px;">
-                <button class="btn btn-primary" onclick="openImportAlgsetModal()">Add Algset</button>
-            </div>
-        `;
-    }
+        </section>
+        <div class="algset-import-footer">
+            <button class="btn btn-primary" onclick="openImportAlgsetModal()">Import Algset</button>
+        </div>
+    `;
 }
 
 window.selectDefaultAlgset = function(fileName) {
@@ -857,7 +943,7 @@ window.removeAlgset = function(name) {
                 saveSelectedCases();
             }
             saveTrainingJSONs();
-            renderAlgsetTab('imported');
+            renderAlgsetSelectorContent();
             renderApp();
         }
     );
@@ -1112,9 +1198,6 @@ function openSettingsModal() {
                         value="${AppState.settings.startingCueDuration}"
                         onchange="changeCueDuration(this.value)">
                 </label>
-                <button class="settings-action-btn" onclick="this.closest('.modal').remove(); openAlgsetSelectorModal();">Algsets</button>
-                <button class="settings-action-btn" onclick="this.closest('.modal').remove(); openImportAlgsetModal();">Import algset</button>
-                <button class="settings-action-btn" onclick="this.closest('.modal').remove(); showJsonCreatorFullscreen();">Algset devtool</button>
             </div>
         </div>
     `;

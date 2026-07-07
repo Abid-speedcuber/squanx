@@ -318,6 +318,7 @@ function getUsedPieces(fullText, excludePosition) {
 // === SVG RENDERING ===
 function renderCluster(cluster, state, targetCx, targetCy, centerAngle, layer, position, dimensions) {
     const { r_inner, r_outer, r_outer_apex } = dimensions;
+    const pieceStroke = dimensions.colorScheme?.pieceStroke || '#333';
     const half = cluster.type === 'corner' ? 30 : 15;
     let mainSVG = '';
     let interactionZones = '';
@@ -348,15 +349,15 @@ function renderCluster(cluster, state, targetCx, targetCy, centerAngle, layer, p
             const pMidA = polarToCartesian(targetCx, targetCy, midRadius, centerAngle - half);
             const pMidB = polarToCartesian(targetCx, targetCy, midRadius, centerAngle + half);
 
-            mainSVG += `<polygon points="${pointsToString([pMidA, pA, pB, pMidB])}" fill="${pieceData.colors.outer}" stroke="#333" stroke-width="1" pointer-events="none"/>`;
-            mainSVG += `<polygon points="${pointsToString([pInner, pMidA, pMidB])}" fill="${pieceData.colors.inner}" stroke="#333" stroke-width="0.8" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pMidA, pA, pB, pMidB])}" fill="${pieceData.colors.outer}" stroke="${pieceStroke}" stroke-width="1" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pMidA, pMidB])}" fill="${pieceData.colors.inner}" stroke="${pieceStroke}" stroke-width="0.8" pointer-events="none"/>`;
         } else {
             const midRadius = r_inner + (r_outer - r_inner) * 0.8;
             const pMidA = polarToCartesian(targetCx, targetCy, midRadius, centerAngle - half);
             const pMidB = polarToCartesian(targetCx, targetCy, midRadius, centerAngle + half);
 
-            mainSVG += `<polygon points="${pointsToString([pMidA, pA, pB, pMidB])}" fill="${pieceData.colors.outer}" stroke="#333" stroke-width="1" pointer-events="none"/>`;
-            mainSVG += `<polygon points="${pointsToString([pInner, pMidA, pMidB])}" fill="${pieceData.colors.inner}" stroke="#333" stroke-width="0.8" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pMidA, pA, pB, pMidB])}" fill="${pieceData.colors.outer}" stroke="${pieceStroke}" stroke-width="1" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pMidA, pMidB])}" fill="${pieceData.colors.inner}" stroke="${pieceStroke}" stroke-width="0.8" pointer-events="none"/>`;
         }
     } else if (pieceData.type === 'corner') {
         const pInner = polarToCartesian(targetCx, targetCy, r_inner, centerAngle);
@@ -370,22 +371,22 @@ function renderCluster(cluster, state, targetCx, targetCy, centerAngle, layer, p
             const pSmallR = lerpPoint(pInner, pOuterR, scale);
             const pSmallBottom = lerpPoint(pInner, pApex, scale);
 
-            mainSVG += `<polygon points="${pointsToString([pInner, pOuterL, pApex, pSmallBottom, pSmallL])}" fill="${pieceData.colors.left}" stroke="#333" stroke-width="1" pointer-events="none"/>`;
-            mainSVG += `<polygon points="${pointsToString([pInner, pSmallR, pSmallBottom, pApex, pOuterR])}" fill="${pieceData.colors.right}" stroke="#333" stroke-width="1" pointer-events="none"/>`;
-            mainSVG += `<polygon points="${pointsToString([pInner, pSmallL, pSmallBottom, pSmallR])}" fill="${pieceData.colors.top}" stroke="#333" stroke-width="0.8" pointer-events="none"/>`;
-            mainSVG += `<polygon points="${pointsToString([pInner, pOuterL, pApex, pOuterR])}" fill="none" stroke="#333" stroke-width="1" pointer-events="none"/>`;
-            mainSVG += `<line x1="${pApex.x.toFixed(2)}" y1="${pApex.y.toFixed(2)}" x2="${pSmallBottom.x.toFixed(2)}" y2="${pSmallBottom.y.toFixed(2)}" stroke="#333" stroke-width="1" stroke-linecap="round" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pOuterL, pApex, pSmallBottom, pSmallL])}" fill="${pieceData.colors.left}" stroke="${pieceStroke}" stroke-width="1" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pSmallR, pSmallBottom, pApex, pOuterR])}" fill="${pieceData.colors.right}" stroke="${pieceStroke}" stroke-width="1" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pSmallL, pSmallBottom, pSmallR])}" fill="${pieceData.colors.top}" stroke="${pieceStroke}" stroke-width="0.8" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pOuterL, pApex, pOuterR])}" fill="none" stroke="${pieceStroke}" stroke-width="1" pointer-events="none"/>`;
+            mainSVG += `<line x1="${pApex.x.toFixed(2)}" y1="${pApex.y.toFixed(2)}" x2="${pSmallBottom.x.toFixed(2)}" y2="${pSmallBottom.y.toFixed(2)}" stroke="${pieceStroke}" stroke-width="1" stroke-linecap="round" pointer-events="none"/>`;
         } else {
             const scale = 0.80;
             const pSmallL = lerpPoint(pInner, pOuterL, scale);
             const pSmallR = lerpPoint(pInner, pOuterR, scale);
             const pSmallBottom = lerpPoint(pInner, pApex, scale);
 
-            mainSVG += `<polygon points="${pointsToString([pInner, pOuterL, pApex, pSmallBottom, pSmallL])}" fill="${pieceData.colors.left}" stroke="#333" stroke-width="1" pointer-events="none"/>`;
-            mainSVG += `<polygon points="${pointsToString([pInner, pSmallR, pSmallBottom, pApex, pOuterR])}" fill="${pieceData.colors.right}" stroke="#333" stroke-width="1" pointer-events="none"/>`;
-            mainSVG += `<polygon points="${pointsToString([pInner, pSmallL, pSmallBottom, pSmallR])}" fill="${pieceData.colors.top}" stroke="#333" stroke-width="0.8" pointer-events="none"/>`;
-            mainSVG += `<polygon points="${pointsToString([pInner, pOuterL, pApex, pOuterR])}" fill="none" stroke="#333" stroke-width="1" pointer-events="none"/>`;
-            mainSVG += `<line x1="${pApex.x.toFixed(2)}" y1="${pApex.y.toFixed(2)}" x2="${pSmallBottom.x.toFixed(2)}" y2="${pSmallBottom.y.toFixed(2)}" stroke="#333" stroke-width="1" stroke-linecap="round" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pOuterL, pApex, pSmallBottom, pSmallL])}" fill="${pieceData.colors.left}" stroke="${pieceStroke}" stroke-width="1" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pSmallR, pSmallBottom, pApex, pOuterR])}" fill="${pieceData.colors.right}" stroke="${pieceStroke}" stroke-width="1" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pSmallL, pSmallBottom, pSmallR])}" fill="${pieceData.colors.top}" stroke="${pieceStroke}" stroke-width="0.8" pointer-events="none"/>`;
+            mainSVG += `<polygon points="${pointsToString([pInner, pOuterL, pApex, pOuterR])}" fill="none" stroke="${pieceStroke}" stroke-width="1" pointer-events="none"/>`;
+            mainSVG += `<line x1="${pApex.x.toFixed(2)}" y1="${pApex.y.toFixed(2)}" x2="${pSmallBottom.x.toFixed(2)}" y2="${pSmallBottom.y.toFixed(2)}" stroke="${pieceStroke}" stroke-width="1" stroke-linecap="round" pointer-events="none"/>`;
         }
     }
 
