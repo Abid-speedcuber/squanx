@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360" role="img" aria-labelledby="title desc">
+  <title id="title">SquanX outlined wordmark</title>
+  <desc id="desc">The SquanX dark-theme wordmark with an exaggerated black outline.</desc>
+  <defs>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Unbounded:wght@800&amp;900");
+      :root {
+        --outline: #02050b;
+        --outline-soft: #071321;
+        --squan-fill: #48cae4;
+        --x-fill: #e0f2fe;
+      }
+      .word {
+        font-family: "Unbounded", Arial, sans-serif;
+        font-size: 158px;
+        font-weight: 900;
+        letter-spacing: -11px;
+        paint-order: stroke fill;
+        stroke-linejoin: round;
+        stroke-linecap: round;
+      }
+      .outline-fat {
+        fill: none;
+        stroke: var(--outline);
+        stroke-width: 42px;
+      }
+      .outline-soft {
+        fill: none;
+        stroke: var(--outline-soft);
+        stroke-width: 24px;
+      }
+      .fill-word {
+        stroke: var(--outline);
+        stroke-width: 3px;
+      }
+      .fill-squan { fill: var(--squan-fill); }
+      .fill-x { fill: var(--x-fill); }
+    </style>
+    <filter id="lift" x="-15%" y="-25%" width="130%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="5" flood-color="#000000" flood-opacity="0.26"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#lift)">
+    <text class="word outline-fat" x="62" y="220">SquanX</text>
+    <text class="word outline-soft" x="62" y="220">SquanX</text>
+    <text class="word fill-word" x="62" y="220"><tspan class="fill-squan">Squan</tspan><tspan class="fill-x">X</tspan></text>
+  </g>
+</svg>

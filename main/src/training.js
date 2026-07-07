@@ -3,6 +3,8 @@ import { ensureFeatureModules, openDevtoolFullscreen } from './moduleLoader.js';
 // Application State
 const AppState = {
     selectedCases: [],
+    selectedCasesByAlgset: {},
+    caseTreeExpandedByAlgset: {},
     currentScramble: null,
     previousScramble: null,
     scrambleHistory: [],
@@ -76,6 +78,18 @@ function showConfirmationModal(title, message, onConfirm, onCancel = null) {
     });
 }
 
+function formatScrambleDisplay(scramble) {
+    const text = String(scramble || '').trim();
+    if (!text || /^(solver|error)/i.test(text)) return text;
+    const tokens = text.match(/\/|\(?\s*-?\d+\s*,\s*-?\d+\s*\)?/g);
+    if (!tokens) return text;
+    return tokens
+        .map((token) => token === '/' ? '/' : token.replace(/[()]/g, '').replace(/\s+/g, '').replace(',', ','))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 // Default algset structure
 const DEFAULT_ALGSET = {
     "New Folder": {
@@ -123,6 +137,48 @@ function saveTrainingJSONs() {
     }
 }
 
+function getTrainingCaseByPath(tree, path) {
+    let current = tree;
+    for (const part of String(path || '').split('.')) current = current?.[part];
+    return current?.caseName !== undefined ? current : null;
+}
+
+function buildSelectedCasesForAlgset(name, paths = null) {
+    const tree = AppState.trainingJSONs[name];
+    if (!tree) return [];
+    const casePaths = paths || getCasePaths(tree);
+    return casePaths
+        .map((path) => {
+            const item = getTrainingCaseByPath(tree, path);
+            return item ? { ...item, _path: path, _jsonName: name } : null;
+        })
+        .filter(Boolean);
+}
+
+function activateTrainingJSON(name, options = {}) {
+    const { selectAllWhenMissing = true } = options;
+    if (!name || !AppState.trainingJSONs[name]) return false;
+    AppState.activeTrainingJSON = name;
+    const savedSelection = AppState.selectedCasesByAlgset[name];
+    if (Array.isArray(savedSelection)) {
+        AppState.selectedCases = savedSelection.filter((item) => getTrainingCaseByPath(AppState.trainingJSONs[name], item._path));
+    } else {
+        AppState.selectedCases = selectAllWhenMissing ? buildSelectedCasesForAlgset(name) : [];
+    }
+    saveTrainingJSONs();
+    saveSelectedCases();
+    return true;
+}
+
+function importTrainingJSONData(name, data, options = {}) {
+    const { activate = true, selectAll = true } = options;
+    AppState.trainingJSONs[name] = data;
+    AppState.selectedCasesByAlgset[name] = selectAll ? buildSelectedCasesForAlgset(name) : [];
+    if (activate || !AppState.activeTrainingJSON) activateTrainingJSON(name, { selectAllWhenMissing: selectAll });
+    saveTrainingJSONs();
+    saveSelectedCases();
+}
+
 // Load developing JSONs from localStorage
 function loadDevelopingJSONs() {
     const saved = localStorage.getItem('sq1DevelopingJSONs');
@@ -151,15 +207,26 @@ function saveDevelopingJSONs() {
 
 // Load selected cases from localStorage
 function loadSelectedCases() {
-    const saved = localStorage.getItem('sq1SelectedCases');
-    if (saved) {
+    const savedByAlgset = localStorage.getItem('sq1SelectedCasesByAlgset');
+    if (savedByAlgset) {
         try {
-            AppState.selectedCases = JSON.parse(saved);
+            AppState.selectedCasesByAlgset = JSON.parse(savedByAlgset) || {};
         } catch (e) {
-            console.error('Error loading selected cases:', e);
-            AppState.selectedCases = [];
+            console.error('Error loading selected cases by algset:', e);
+            AppState.selectedCasesByAlgset = {};
         }
     }
+
+    const legacySaved = localStorage.getItem('sq1SelectedCases');
+    if (legacySaved && Object.keys(AppState.selectedCasesByAlgset).length === 0 && AppState.activeTrainingJSON) {
+        try {
+            AppState.selectedCasesByAlgset[AppState.activeTrainingJSON] = JSON.parse(legacySaved);
+        } catch (e) {
+            console.error('Error loading selected cases:', e);
+        }
+    }
+
+    if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
 }
 
 // Load last screen state
@@ -175,7 +242,26 @@ function saveLastScreen(screen) {
 
 // Save selected cases to localStorage
 function saveSelectedCases() {
+    if (AppState.activeTrainingJSON) {
+        AppState.selectedCasesByAlgset[AppState.activeTrainingJSON] = AppState.selectedCases;
+    }
+    localStorage.setItem('sq1SelectedCasesByAlgset', JSON.stringify(AppState.selectedCasesByAlgset));
     localStorage.setItem('sq1SelectedCases', JSON.stringify(AppState.selectedCases));
+}
+
+function loadCaseTreeExpandedState() {
+    const saved = localStorage.getItem('sq1CaseTreeExpandedByAlgset');
+    if (!saved) return;
+    try {
+        AppState.caseTreeExpandedByAlgset = JSON.parse(saved) || {};
+    } catch (e) {
+        console.error('Error loading case tree expanded state:', e);
+        AppState.caseTreeExpandedByAlgset = {};
+    }
+}
+
+function saveCaseTreeExpandedState() {
+    localStorage.setItem('sq1CaseTreeExpandedByAlgset', JSON.stringify(AppState.caseTreeExpandedByAlgset));
 }
 
 // Load session times from localStorage
@@ -223,6 +309,7 @@ function applyTheme() {
 async function initApp() {
     loadTrainingJSONs();
     loadDevelopingJSONs();
+    loadCaseTreeExpandedState();
     loadSelectedCases();
     loadSessionTimes();
     loadSettings();
@@ -442,7 +529,7 @@ async function generateNewScramble() {
             ...result, 
             caseName: randomCase.caseName, 
             alg: randomCase.alg || '',
-            scramble: scramble
+            scramble: formatScrambleDisplay(scramble)
         };
         renderApp();
     } catch (error) {
@@ -548,7 +635,9 @@ function exportAllAppData() {
         exportedAt: new Date().toISOString(),
         trainingJSONs: AppState.trainingJSONs,
         activeTrainingJSON: AppState.activeTrainingJSON,
+        selectedCasesByAlgset: AppState.selectedCasesByAlgset,
         selectedCases: AppState.selectedCases,
+        caseTreeExpandedByAlgset: AppState.caseTreeExpandedByAlgset,
         developingJSONs: AppState.developingJSONs,
         activeDevelopingJSON: AppState.activeDevelopingJSON,
         sessionTimes: AppState.sessionTimes,
@@ -568,7 +657,7 @@ function openImportAllDataModal() {
             <div class="modal-body">
                 <div class="settings-group">
                     <label class="settings-label">Paste JSON or Drag & Drop File</label>
-                    <textarea class="settings-input" id="importAllDataInput" placeholder="Paste exported SquanX app data here..."
+                    <textarea class="settings-input import-drop-textarea" id="importAllDataInput" placeholder="Paste exported SquanX app data here..."
                         ondragover="event.preventDefault();"
                         ondrop="handleAllDataFileDrop(event)"></textarea>
                 </div>
@@ -605,7 +694,13 @@ window.importAllAppData = function() {
         AppState.activeTrainingJSON = data.activeTrainingJSON && AppState.trainingJSONs[data.activeTrainingJSON]
             ? data.activeTrainingJSON
             : Object.keys(AppState.trainingJSONs)[0] || null;
-        AppState.selectedCases = Array.isArray(data.selectedCases) ? data.selectedCases : [];
+        AppState.selectedCasesByAlgset = data.selectedCasesByAlgset || {};
+        AppState.caseTreeExpandedByAlgset = data.caseTreeExpandedByAlgset || {};
+        if (Array.isArray(data.selectedCases) && AppState.activeTrainingJSON && !AppState.selectedCasesByAlgset[AppState.activeTrainingJSON]) {
+            AppState.selectedCasesByAlgset[AppState.activeTrainingJSON] = data.selectedCases;
+        }
+        if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
+        else AppState.selectedCases = [];
         AppState.developingJSONs = data.developingJSONs || { default: DEFAULT_ALGSET };
         AppState.activeDevelopingJSON = data.activeDevelopingJSON && AppState.developingJSONs[data.activeDevelopingJSON]
             ? data.activeDevelopingJSON
@@ -615,6 +710,7 @@ window.importAllAppData = function() {
         saveTrainingJSONs();
         saveDevelopingJSONs();
         saveSelectedCases();
+        saveCaseTreeExpandedState();
         saveSessionTimes();
         saveSettings();
         applyTheme();
@@ -895,16 +991,21 @@ function renderAlgsetSelectorContent() {
     const content = document.getElementById('algsetContent');
     if (!content) return;
 
-    const defaultAlgsets = ['eo.json', 'cp.json', 'ep.json', 'cubeshape.json'];
+    const defaultAlgsets = [
+        { file: 'eo.json', label: 'EO', author: 'SquanGo' },
+        { file: 'cp.json', label: 'CP', author: 'SquanGo' },
+        { file: 'ep.json', label: 'EP', author: 'SquanGo' },
+        { file: 'cubeshape.json', label: 'Cubeshape', author: 'jose_08' }
+    ];
     const importedAlgsets = Object.keys(AppState.trainingJSONs);
 
     content.innerHTML = `
         <section class="algset-section">
             <h3>Default</h3>
             <div class="algset-list">
-                ${defaultAlgsets.map(name => `
-                    <div class="algset-item" onclick="selectDefaultAlgset('${name}')">
-                        <span>${name.replace('.json', '')}</span>
+                ${defaultAlgsets.map(algset => `
+                    <div class="algset-item" onclick="selectDefaultAlgset('${algset.file}')">
+                        <span>${algset.label} <small>by ${algset.author}</small></span>
                     </div>
                 `).join('')}
             </div>
@@ -930,16 +1031,21 @@ function renderAlgsetSelectorContent() {
 }
 
 window.selectDefaultAlgset = function(fileName) {
-    showFloatingMessage(`Default algset "${fileName}" placeholder - will be implemented`, 'info');
-    // Will load from default-algsets/fileName later
+    const name = fileName.replace('.json', '');
+    if (!AppState.trainingJSONs[name]) {
+        importTrainingJSONData(name, JSON.parse(JSON.stringify(DEFAULT_ALGSET)), { activate: false, selectAll: true });
+    }
+    activateTrainingJSON(name, { selectAllWhenMissing: true });
+    document.querySelector('.modal')?.remove();
+    renderApp();
+    void generateNewScramble();
 };
 
 window.selectImportedAlgset = function(name) {
-    AppState.activeTrainingJSON = name;
-    saveTrainingJSONs();
-    document.querySelector('.modal').remove();
+    activateTrainingJSON(name, { selectAllWhenMissing: true });
+    document.querySelector('.modal')?.remove();
     renderApp();
-    openCaseSelectionModal();
+    void generateNewScramble();
 };
 
 window.removeAlgset = function(name) {
@@ -948,12 +1054,14 @@ window.removeAlgset = function(name) {
         `Remove algset "${name}"?`,
         () => {
             delete AppState.trainingJSONs[name];
+            delete AppState.selectedCasesByAlgset[name];
             if (AppState.activeTrainingJSON === name) {
                 AppState.activeTrainingJSON = Object.keys(AppState.trainingJSONs)[0] || null;
-                AppState.selectedCases = [];
-                saveSelectedCases();
+                if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
+                else AppState.selectedCases = [];
             }
             saveTrainingJSONs();
+            saveSelectedCases();
             renderAlgsetSelectorContent();
             renderApp();
         }
@@ -977,7 +1085,7 @@ window.openImportAlgsetModal = function() {
                 </div>
                 <div class="settings-group">
                     <label class="settings-label">Paste JSON or Drag & Drop File</label>
-                    <textarea class="settings-input" id="importAlgsetInput" placeholder="Paste your JSON here..."
+                    <textarea class="settings-input import-drop-textarea" id="importAlgsetInput" placeholder="Paste your JSON here..."
                         ondragover="event.preventDefault();"
                         ondrop="handleAlgsetFileDrop(event)"
                         style="min-height: 300px; font-family: 'Courier New', monospace;"></textarea>
@@ -1029,17 +1137,14 @@ window.importAlgset = function() {
 
     try {
         const parsed = JSON.parse(jsonText);
-        AppState.trainingJSONs[name] = parsed;
-        if (!AppState.activeTrainingJSON) {
-            AppState.activeTrainingJSON = name;
-        }
-        saveTrainingJSONs();
+        importTrainingJSONData(name, parsed, { activate: true, selectAll: true });
 
         showFloatingMessage('Algset imported successfully!', 'success');
         setTimeout(() => {
             const modals = document.querySelectorAll('.modal');
             modals.forEach(m => m.remove());
-            openAlgsetSelectorModal();
+            renderApp();
+            void generateNewScramble();
         }, 500);
     } catch (error) {
         showFloatingMessage('Invalid JSON: ' + error.message, 'error');
@@ -1078,8 +1183,7 @@ function openCaseSelectionModal() {
 }
 
 window.switchTrainingTab = function (name) {
-    AppState.activeTrainingJSON = name;
-    saveTrainingJSONs();
+    activateTrainingJSON(name, { selectAllWhenMissing: true });
 
     // Update tab styles
     const allTabs = document.querySelectorAll('#trainingTabs button');
@@ -1100,7 +1204,22 @@ function renderCaseTree() {
     if (!treeContainer) return;
 
     const activeData = AppState.trainingJSONs[AppState.activeTrainingJSON] || {};
+    if (!AppState.caseTreeExpandedByAlgset[AppState.activeTrainingJSON]) {
+        AppState.caseTreeExpandedByAlgset[AppState.activeTrainingJSON] = getFolderPaths(activeData);
+        saveCaseTreeExpandedState();
+    }
     treeContainer.innerHTML = renderTreeNode(activeData, [], 0);
+}
+
+function getFolderPaths(node, path = []) {
+    const paths = [];
+    for (const [key, value] of Object.entries(node || {})) {
+        if (value?.caseName !== undefined) continue;
+        const nextPath = [...path, key];
+        paths.push(nextPath.join('.'));
+        paths.push(...getFolderPaths(value, nextPath));
+    }
+    return paths;
 }
 
 function getCasePaths(node, path = []) {
@@ -1160,17 +1279,21 @@ function renderTreeNode(node, path, depth = 0) {
             const casePaths = getCasePaths(value, currentPath);
             const allSelected = casePaths.length > 0 && casePaths.every(isPathSelected);
             const childColumns = getCaseGridColumns(value, depth + 1);
+            const expandedPaths = AppState.caseTreeExpandedByAlgset[AppState.activeTrainingJSON] || [];
+            const isExpanded = expandedPaths.includes(pathString);
+            const folderWeight = Math.max(600, Math.round(900 - (1 - (1 / (depth + 1))) * 380));
             html += `
                         <div class="tree-node tree-node-folder" style="--tree-depth:${depth};">
-                            <div class="tree-node-header">
+                            <div class="tree-node-header" onclick='toggleTreeNode(${pathArg})'>
                                 <input type="checkbox" class="tree-checkbox" 
                                     ${allSelected ? 'checked' : ''} 
+                                    onclick="event.stopPropagation()"
                                     onchange='toggleFolderSelection(${pathArg}, this.checked)'
                                 >
-                                <span class="tree-label">${key}</span>
-                                <button class="tree-toggle" type="button" onclick="toggleTreeNode(this.closest('.tree-node-header'))">▼</button>
+                                <span class="tree-label tree-label-folder" style="--folder-weight:${folderWeight};">${key}</span>
+                                <button class="tree-toggle" type="button" tabindex="-1">${isExpanded ? '▾' : '▸'}</button>
                             </div>
-                            <div class="tree-children expanded" style="--case-columns:${childColumns};">
+                            <div class="tree-children ${isExpanded ? 'expanded' : ''}" style="--case-columns:${childColumns};">
                                 ${renderTreeNode(value, currentPath, depth + 1)}
                             </div>
                         </div>
@@ -1181,17 +1304,15 @@ function renderTreeNode(node, path, depth = 0) {
     return html;
 }
 
-window.toggleTreeNode = function (header) {
-    const children = header.nextElementSibling;
-    const toggle = header.querySelector('.tree-toggle');
-
-    if (children.classList.contains('expanded')) {
-        children.classList.remove('expanded');
-        toggle.textContent = '›';
-    } else {
-        children.classList.add('expanded');
-        toggle.textContent = '▼';
-    }
+window.toggleTreeNode = function (path) {
+    const name = AppState.activeTrainingJSON;
+    if (!name) return;
+    const expanded = new Set(AppState.caseTreeExpandedByAlgset[name] || []);
+    if (expanded.has(path)) expanded.delete(path);
+    else expanded.add(path);
+    AppState.caseTreeExpandedByAlgset[name] = [...expanded];
+    saveCaseTreeExpandedState();
+    renderCaseTree();
 };
 
 window.toggleCaseSelection = function (path, checked) {
@@ -1297,16 +1418,21 @@ function openHelpModal() {
             </div>
             <div class="modal-body help-content">
                 <section class="help-section">
-                    <h3>Timer</h3>
-                    <p>Hold space or press the timer, release to start, and stop with space or another press.</p>
+                    <h3>Getting an algset into the trainer</h3>
+                    <p>Use Select Algset to choose one of your imported algsets. If you have never opened that algset before, SquanX selects every case in it automatically. After that, your exact selected cases are remembered per algset.</p>
+                    <p>To import a JSON file, open Select Algset, press Import Algset, then paste JSON or drag a file onto the import box. The imported algset becomes active immediately and all of its cases are selected.</p>
                 </section>
                 <section class="help-section">
-                    <h3>Cases</h3>
-                    <p>Select an algset, choose cases, and use Next to generate a fresh scramble.</p>
+                    <h3>Creating an algset</h3>
+                    <p>Open the Devtool from the left rail. Build folders and cases there, or use Bulk Import for CSV/XLSX files. When the root is ready, use Extract JSON, Download for a file, or Train to send the current root straight into this trainer.</p>
                 </section>
                 <section class="help-section">
-                    <h3>Devtool</h3>
-                    <p>Use the rail devtool button to create or edit algsets, then run them in the trainer.</p>
+                    <h3>Selecting cases</h3>
+                    <p>The case selector remembers expanded folders. Folder checkboxes select or deselect everything inside that folder. Individual case checkboxes autosave instantly; there is no separate save button.</p>
+                </section>
+                <section class="help-section">
+                    <h3>Data backup</h3>
+                    <p>Use the import/export buttons at the bottom of the rail to move all app data at once, including trainer algsets, selected cases, devtool roots, templates, settings, and session times.</p>
                 </section>
             </div>
         </div>
@@ -1357,7 +1483,7 @@ window.openImportJSONModal = function () {
                         </div>
                         <div class="settings-group">
                             <label class="settings-label">Paste JSON or Drag & Drop File</label>
-                            <textarea class="settings-input" id="importJSONInput" placeholder="Paste your JSON here..."
+                            <textarea class="settings-input import-drop-textarea" id="importJSONInput" placeholder="Paste your JSON here..."
                                 ondragover="event.preventDefault();"
                                 ondrop="handleJSONFileDrop(event)"
                                 style="min-height: 300px; font-family: 'Courier New', monospace;"></textarea>
@@ -1409,16 +1535,13 @@ window.importTrainingJSON = function () {
 
     try {
         const parsed = JSON.parse(jsonText);
-        AppState.trainingJSONs[name] = parsed;
-        if (!AppState.activeTrainingJSON) {
-            AppState.activeTrainingJSON = name;
-        }
-        saveTrainingJSONs();
+        importTrainingJSONData(name, parsed, { activate: true, selectAll: true });
 
         showFloatingMessage('Training JSON imported successfully!', 'success');
         setTimeout(() => {
             document.querySelector('.modal').remove();
-            openSettingsModal();
+            renderApp();
+            void generateNewScramble();
         }, 500);
     } catch (error) {
         showFloatingMessage('Invalid JSON: ' + error.message, 'error');
@@ -1426,10 +1549,7 @@ window.importTrainingJSON = function () {
 };
 
 window.setActiveTrainingJSON = function (name) {
-    AppState.activeTrainingJSON = name;
-    saveTrainingJSONs();
-    AppState.selectedCases = [];
-    saveSelectedCases();
+    activateTrainingJSON(name, { selectAllWhenMissing: true });
     document.querySelector('.modal').remove();
     openSettingsModal();
     renderApp();
@@ -1441,12 +1561,14 @@ window.removeTrainingJSON = function (name) {
         `Remove training set "${name}"?`,
         () => {
             delete AppState.trainingJSONs[name];
+            delete AppState.selectedCasesByAlgset[name];
             if (AppState.activeTrainingJSON === name) {
                 AppState.activeTrainingJSON = Object.keys(AppState.trainingJSONs)[0] || null;
-                AppState.selectedCases = [];
-                saveSelectedCases();
+                if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
+                else AppState.selectedCases = [];
             }
             saveTrainingJSONs();
+            saveSelectedCases();
             document.querySelector('.modal').remove();
             openSettingsModal();
             renderApp();
@@ -1544,6 +1666,8 @@ Object.assign(window, {
 export {
     AppState,
     DEFAULT_ALGSET,
+    activateTrainingJSON,
+    importTrainingJSONData,
     initApp,
     renderApp,
     generateNewScramble,

@@ -620,6 +620,13 @@ body.theme-light .cue-input {
     font-size: 0.95rem;
 }
 
+.algset-item small {
+    margin-left: 4px;
+    color: var(--text-muted);
+    font-size: 0.78em;
+    font-weight: 500;
+}
+
 .algset-import-footer {
     padding-top: 14px;
     border-top: 1px solid var(--divider-soft);
@@ -635,6 +642,19 @@ textarea.settings-input {
     min-height: 280px;
     font-family: "Courier New", monospace;
     resize: vertical;
+}
+
+.import-drop-textarea {
+    border-style: dashed;
+    background:
+        linear-gradient(var(--field-bg), var(--field-bg)) padding-box,
+        linear-gradient(135deg, color-mix(in srgb, var(--border-col) 70%, transparent), transparent) border-box;
+}
+
+.import-drop-textarea:hover,
+.import-drop-textarea:focus {
+    border-color: var(--border-col);
+    background: var(--field-focus-bg);
 }
 
 .button-group {
@@ -744,16 +764,21 @@ textarea.settings-input {
 }
 
 .tree-toggle {
-    margin-left: auto;
-    width: 24px;
-    height: 24px;
+    width: 14px;
+    height: 1em;
     border: 1px solid transparent;
     background: transparent;
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: 0.86em;
     line-height: 1;
     position: relative;
     z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    pointer-events: none;
+    transform: translateY(-0.03em);
 }
 
 .tree-checkbox {
@@ -763,10 +788,16 @@ textarea.settings-input {
 }
 
 .tree-label {
-    flex: 1;
     color: var(--text-main);
     position: relative;
     z-index: 1;
+}
+
+.tree-label-folder {
+    flex: 0 1 auto;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", sans-serif;
+    font-weight: var(--folder-weight, 720);
+    color: var(--text-strong);
 }
 
 .tree-children {
@@ -786,30 +817,6 @@ textarea.settings-input {
 
 .tree-node-case {
     min-width: 0;
-}
-
-.tree-node::before {
-    content: "";
-    position: absolute;
-    left: calc(var(--tree-depth, 0) * 24px + 9px);
-    top: 0;
-    bottom: -6px;
-    width: 1px;
-    background: var(--divider-soft);
-    opacity: 0.55;
-    pointer-events: none;
-}
-
-.tree-node-header::before {
-    content: "";
-    position: absolute;
-    left: calc(var(--tree-depth, 0) * 24px + 9px);
-    top: 50%;
-    width: 13px;
-    height: 1px;
-    background: var(--divider-soft);
-    opacity: 0.55;
-    pointer-events: none;
 }
 
 .case-selection-content {

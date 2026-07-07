@@ -639,9 +639,9 @@ function createMiniPieceSVG(piece, colorScheme = DEFAULT_COLOR_SCHEME) {
 // === PIECE SELECTION MODAL ===
 function createPieceSelectionModal() {
     return `
-    <div id="pieceSelectionModal" style="display: none; position: fixed; background: white; border: 2px solid #333; border-radius: 8px; padding: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 10000; max-width: 300px;">
-      <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #333;">Select Piece</h3>
-      <div id="pieceGrid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; max-height: 400px; overflow-y: auto;">
+    <div id="pieceSelectionModal">
+      <h3>Select Piece</h3>
+      <div id="pieceGrid">
         <!-- Pieces will be populated here -->
       </div>
     </div>
@@ -906,15 +906,15 @@ function showPieceSelectionModal(state, position, layer, isCornerZone, x, y, con
 
     // Create tab header
     const tabHeader = document.createElement('div');
-    tabHeader.style.cssText = 'display: flex; gap: 4px; margin-bottom: 10px; border-bottom: 2px solid #ddd;';
+    tabHeader.className = 'piece-selector-tabs';
     
     const edgeTab = document.createElement('button');
     edgeTab.textContent = 'Edges';
-    edgeTab.style.cssText = 'flex: 1; padding: 8px; border: none; background: #f5f5f5; cursor: pointer; font-weight: 500; border-bottom: 3px solid transparent;';
+    edgeTab.className = 'piece-selector-tab';
     
     const cornerTab = document.createElement('button');
     cornerTab.textContent = 'Corners';
-    cornerTab.style.cssText = 'flex: 1; padding: 8px; border: none; background: #f5f5f5; cursor: pointer; font-weight: 500; border-bottom: 3px solid transparent;';
+    cornerTab.className = 'piece-selector-tab';
     
     let currentTab = isCornerZone ? 'corner' : 'edge';
     
@@ -922,26 +922,14 @@ function showPieceSelectionModal(state, position, layer, isCornerZone, x, y, con
         currentTab = tab;
         const availablePieces = tab === 'corner' ? CORNER_PIECES : EDGE_PIECES;
         
-        // Update tab styles
-        if (tab === 'edge') {
-            edgeTab.style.background = '#fff';
-            edgeTab.style.borderBottomColor = '#0078d4';
-            cornerTab.style.background = '#f5f5f5';
-            cornerTab.style.borderBottomColor = 'transparent';
-        } else {
-            cornerTab.style.background = '#fff';
-            cornerTab.style.borderBottomColor = '#0078d4';
-            edgeTab.style.background = '#f5f5f5';
-            edgeTab.style.borderBottomColor = 'transparent';
-        }
+        edgeTab.classList.toggle('active', tab === 'edge');
+        cornerTab.classList.toggle('active', tab === 'corner');
         
         grid.innerHTML = '';
         
         availablePieces.forEach(piece => {
             const button = document.createElement('button');
-            button.style.cssText = 'padding: 12px; background: #f5f5f5; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;';
-            button.onmouseover = () => button.style.background = '#e0e0e0';
-            button.onmouseout = () => button.style.background = '#f5f5f5';
+            button.className = 'piece-selector-option';
             button.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -969,9 +957,9 @@ function showPieceSelectionModal(state, position, layer, isCornerZone, x, y, con
     
     // Clear and setup modal - remove ALL existing tab headers
     const modalContent = modal.querySelector('h3').parentElement;
-    const existingTabHeaders = modalContent.querySelectorAll('div');
+    const existingTabHeaders = modalContent.querySelectorAll('.piece-selector-tabs');
     existingTabHeaders.forEach(header => {
-        if (header !== grid && header.style.cssText.includes('border-bottom')) {
+        if (header !== grid) {
             header.remove();
         }
     });

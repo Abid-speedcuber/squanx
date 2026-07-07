@@ -1,5 +1,5 @@
 import { ensureFeatureModules, ensureXlsxScript } from '../moduleLoader.js';
-import { AppState, DEFAULT_ALGSET, generateNewScramble, renderApp, saveDevelopingJSONs, saveLastScreen } from '../training.js';
+import { AppState, DEFAULT_ALGSET, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveLastScreen } from '../training.js';
 import {
     DEFAULT_LAYER,
     DOWN_MOVE_OPTIONS,
@@ -48,6 +48,18 @@ function equatorLabel(equator) {
     if (equator === '/') return 'Flipped';
     if (equator === '|') return 'Solved';
     return equator || '-';
+}
+
+function formatScrambleDisplay(scramble) {
+    const text = String(scramble || '').trim();
+    if (!text || /^(solver|error)/i.test(text)) return text;
+    const tokens = text.match(/\/|\(?\s*-?\d+\s*,\s*-?\d+\s*\)?/g);
+    if (!tokens) return text;
+    return tokens
+        .map((token) => token === '/' ? '/' : token.replace(/[()]/g, '').replace(/\s+/g, '').replace(',', ','))
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 function showFloatingMessage(message, type = 'info', duration = 3000) {
@@ -143,6 +155,8 @@ class JSONCreator {
         this.root.addEventListener('contextmenu', (event) => this.handleContextMenu(event), options);
         this.root.addEventListener('input', (event) => this.handleInput(event), options);
         this.root.addEventListener('change', (event) => this.handleChange(event), options);
+        this.root.addEventListener('dragover', (event) => this.handleDragOver(event), options);
+        this.root.addEventListener('drop', (event) => this.handleDrop(event), options);
         this.root.addEventListener('keydown', (event) => this.handleRootKeydown(event), options);
         this.root.addEventListener('focusout', (event) => this.handleFocusOut(event), options);
         this.root.addEventListener('scroll', () => this.closeInfoBoxes(), { ...options, capture: true });
@@ -239,7 +253,7 @@ class JSONCreator {
                     <button class="json-creator-toolbar-btn" data-action="delete" title="Delete"><img src="viz/delete.svg" width="18" height="18" alt=""></button>
                     <button class="json-creator-toolbar-btn" data-action="open-extra-tools" title="Extra Tools"><img src="viz/extra-tools.svg" width="18" height="18" alt=""></button>
                 </div>
-                <button id="rootSelectorBtn" class="json-creator-root-btn" data-action="open-root-selector">Root: ${escapeHtml(this.state.activeRoot)} ↓</button>
+                <button id="rootSelectorBtn" class="json-creator-root-btn" data-action="open-root-selector">Root: ${escapeHtml(this.state.activeRoot)} <span aria-hidden="true">▾</span></button>
                 <div class="json-creator-tree" id="jsonCreatorTree">${this.renderTreeNode(this.state.tree, '', 0)}</div>
             </div>
         `;
@@ -318,12 +332,14 @@ class JSONCreator {
         const draft = this.state.templateDraft || createTemplateDraft(this.state.caseTemplate);
         return `
             <div class="template-editor-frame">
-                <h2>Case Template</h2>
-                <div class="case-editor-tabs">
-                    <button class="case-editor-tab ${this.state.editor.tab === 'shape' ? 'active' : ''}" data-action="template-tab" data-tab="shape">Shape Input</button>
-                    <button class="case-editor-tab ${this.state.editor.tab === 'additional' ? 'active' : ''}" data-action="template-tab" data-tab="additional">Additional Information</button>
+                <div class="template-editor-main">
+                    <h2>Case Template</h2>
+                    <div class="case-editor-tabs">
+                        <button class="case-editor-tab ${this.state.editor.tab === 'shape' ? 'active' : ''}" data-action="template-tab" data-tab="shape">Shape Input</button>
+                        <button class="case-editor-tab ${this.state.editor.tab === 'additional' ? 'active' : ''}" data-action="template-tab" data-tab="additional">Additional Information</button>
+                    </div>
+                    <div id="templateEditorContent">${this.state.editor.tab === 'shape' ? this.renderShapeTab(draft, true) : this.renderAdditionalTab(draft, true)}</div>
                 </div>
-                <div id="templateEditorContent">${this.state.editor.tab === 'shape' ? this.renderShapeTab(draft, true) : this.renderAdditionalTab(draft, true)}</div>
                 <div class="template-editor-actions">
                     <button class="json-creator-btn json-creator-btn-secondary" data-action="clear-template"><img src="viz/reset.svg" width="14" height="14" alt=""> Reset Template</button>
                     <button class="json-creator-btn" data-action="save-template"><img src="viz/save.svg" width="14" height="14" alt=""> Save Template</button>
@@ -424,7 +440,7 @@ class JSONCreator {
             ${template ? '' : `
                 <div class="json-creator-section-compact">
                     <h4>Algorithm <button class="json-creator-icon-btn info-btn" type="button" style="display:inline-flex;padding:1px 6px;">i</button><span class="info-box">This is the hint you see by pressing the light bulb in the trainer.</span></h4>
-                    <input id="caseAlgorithm" data-field="alg" value="${escapeHtml(item.alg || '')}">
+                    <textarea id="caseAlgorithm" data-field="alg" rows="4">${escapeHtml(item.alg || '')}</textarea>
                 </div>
             `}
         `;
@@ -485,6 +501,7 @@ class JSONCreator {
         if (modal.type === 'file-import') return this.renderFileImportModal(modal);
         if (modal.type === 'bulk-import') return this.renderBulkImportModal();
         if (modal.type === 'data-management') return this.renderDataManagementModal();
+        if (modal.type === 'devtool-help') return this.renderDevtoolHelpModal();
         return '';
     }
 
@@ -543,6 +560,7 @@ class JSONCreator {
                         <textarea id="extractedJSON" readonly style="width:100%;height:55vh;font-family:monospace;">${escapeHtml(JSON.stringify(this.state.tree, null, 2))}</textarea>
                         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
                             <button class="json-creator-btn json-creator-btn-secondary" data-action="copy-extracted-json">Copy</button>
+                            <button class="json-creator-btn" data-action="train-extracted-json">Train</button>
                             <button class="json-creator-btn" data-action="download-root-json">Download</button>
                         </div>
                     </div>
@@ -554,10 +572,15 @@ class JSONCreator {
     renderFileImportModal(modal) {
         return `
             <div class="modal active extract-json-modal" data-action="modal-backdrop">
-                <div class="modal-content devtool-modal" style="max-width:600px;">
+                <div class="modal-content devtool-modal import-devtool-content">
                     <div class="modal-header"><h2>${escapeHtml(modal.title)}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body">
-                        <input type="file" id="jsonImportFile" accept=".json,application/json">
+                        <label class="devtool-file-drop" data-file-target="jsonImportFile">
+                            <span class="devtool-file-drop-title">Drop JSON here</span>
+                            <span class="devtool-file-drop-subtitle">or choose a file</span>
+                            <span class="devtool-file-name" data-file-name-for="jsonImportFile">No file selected</span>
+                            <input type="file" id="jsonImportFile" accept=".json,application/json">
+                        </label>
                         <div style="display:flex;gap:8px;margin-top:16px;">
                             <button class="json-creator-btn" data-action="process-file-import" data-mode="add">Merge/Add</button>
                             <button class="json-creator-btn json-creator-btn-secondary" data-action="process-file-import" data-mode="override">Override</button>
@@ -571,11 +594,16 @@ class JSONCreator {
     renderBulkImportModal() {
         return `
             <div class="modal active extract-json-modal" data-action="modal-backdrop">
-                <div class="modal-content devtool-modal" style="max-width:600px;">
+                <div class="modal-content devtool-modal import-devtool-content">
                     <div class="modal-header"><h2>Bulk Import</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body">
-                        <p>First column: case name. Second column: algorithm. Normal notation, karnotation, and shorthand are accepted automatically.</p>
-                        <input type="file" id="bulkImportFile" accept=".csv,.xlsx">
+                        <p>First column: case name. Third column: algorithm. Normal notation, karnotation, and shorthand are accepted automatically.</p>
+                        <label class="devtool-file-drop" data-file-target="bulkImportFile">
+                            <span class="devtool-file-drop-title">Drop CSV/XLSX here</span>
+                            <span class="devtool-file-drop-subtitle">or choose a file</span>
+                            <span class="devtool-file-name" data-file-name-for="bulkImportFile">No file selected</span>
+                            <input type="file" id="bulkImportFile" accept=".csv,.xlsx">
+                        </label>
                         <button class="json-creator-btn" data-action="process-bulk-import" style="margin-top:16px;width:100%;">Import</button>
                     </div>
                 </div>
@@ -592,6 +620,25 @@ class JSONCreator {
                         <button class="json-creator-btn" data-action="export-all-data">Export All Data</button>
                         <button class="json-creator-btn" data-action="open-general-import">Import Data</button>
                         <button class="json-creator-btn json-creator-btn-secondary" data-action="reset-all-data">Reset All Data</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderDevtoolHelpModal() {
+        return `
+            <div class="modal active extract-json-modal" data-action="modal-backdrop">
+                <div class="modal-content devtool-modal devtool-help-content">
+                    <div class="modal-header"><h2>SquanX Algset Devtool Help</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
+                    <div class="modal-body help-content">
+                        <section class="help-section"><h3>Roots</h3><p>A root is a complete algset workspace. Use the Root selector above the tree to switch roots, create another root, or right-click a root in the dropdown to rename, reset, export, or delete it.</p></section>
+                        <section class="help-section"><h3>Tree editing</h3><p>Use the sidebar toolbar or right-click menu to create folders and cases. New items rename directly in the tree. Press Enter to save a rename, Escape to cancel, or click away to accept it.</p></section>
+                        <section class="help-section"><h3>Shape input</h3><p>The two layer fields store the 12-character layer state. Click the interactive image to cycle pieces, or right-click a slot to open the piece selector. Apply reads the algorithm input and updates the shape; Apply & Append also appends it to the Algorithm hint field.</p></section>
+                        <section class="help-section"><h3>Additional information</h3><p>Middle layer, parity, post-ABF, pre-ABF, constraints, and Algorithm describe how trainer scrambles are generated. Algorithm supports multiple lines and appears from the trainer light bulb.</p></section>
+                        <section class="help-section"><h3>Templates</h3><p>Case Template defines defaults for future cases. It has its own editor frame and bottom save/reset bar so it is visually separate from normal case editing.</p></section>
+                        <section class="help-section"><h3>Bulk import</h3><p>Bulk Import accepts CSV or XLSX. Column 1 is the case name. Column 3 is the algorithm. The importer parses normal notation, karnotation, and shorthand through the same parser used by shape input.</p></section>
+                        <section class="help-section"><h3>Running and training</h3><p>Run validates generated cases in-place. Extract JSON opens the raw root export. Copy copies it, Download saves it, and Train imports the current root into trainer mode, selects it, selects all cases, and switches back to the trainer.</p></section>
                     </div>
                 </div>
             </div>
@@ -707,6 +754,7 @@ class JSONCreator {
         if (action === 'modal-confirm') return this.confirmModal();
         if (action === 'rename-confirm') return this.confirmRename();
         if (action === 'copy-extracted-json') return this.copyExtractedJSON();
+        if (action === 'train-extracted-json') return this.trainExtractedJSON();
         if (action === 'download-root-json') return this.downloadRootJSON();
         if (action === 'open-case-template') return this.openCaseTemplate();
         if (action === 'import-root-data') return this.update({ modal: { type: 'file-import', scope: 'root', title: `Import Data to Root: ${this.state.activeRoot}` }, contextMenu: null });
@@ -716,6 +764,7 @@ class JSONCreator {
         if (action === 'process-bulk-import') return void this.processBulkImport();
         if (action === 'export-all-data') return this.exportAllData();
         if (action === 'open-general-import') return this.update({ modal: { type: 'file-import', scope: 'all', title: 'Import Data' } });
+        if (action === 'open-devtool-help') return this.update({ modal: { type: 'devtool-help' }, contextMenu: null });
         if (action === 'reset-all-data') return this.resetAllData();
         if (action === 'save-template') return this.saveCaseTemplate();
         if (action === 'clear-template') return this.clearCaseTemplate();
@@ -775,11 +824,38 @@ class JSONCreator {
 
     handleChange(event) {
         const target = event.target;
+        if (target.matches('input[type="file"]')) this.updateFileName(target);
         if (target.dataset.action === 'parity-mode') return this.updateParityMode(target.dataset.prefix, target.value);
         if (target.matches('input[type="checkbox"][data-field]')) {
             const value = target.dataset.valueType === 'number' ? Number(target.dataset.value) : target.dataset.value;
             return this.updateArrayField(target.dataset.prefix, target.dataset.field, value, target.checked);
         }
+    }
+
+    updateFileName(input) {
+        const label = this.root?.querySelector(`[data-file-name-for="${input.id}"]`);
+        if (label) label.textContent = input.files?.[0]?.name || 'No file selected';
+    }
+
+    handleDragOver(event) {
+        if (!event.target.closest('.devtool-file-drop')) return;
+        event.preventDefault();
+        event.target.closest('.devtool-file-drop')?.classList.add('dragging');
+    }
+
+    handleDrop(event) {
+        const zone = event.target.closest('.devtool-file-drop');
+        if (!zone) return;
+        event.preventDefault();
+        zone.classList.remove('dragging');
+        const input = this.root?.querySelector(`#${zone.dataset.fileTarget}`);
+        const file = event.dataTransfer?.files?.[0];
+        if (!input || !file) return;
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        this.updateFileName(input);
     }
 
     handleRootKeydown(event) {
@@ -1018,7 +1094,9 @@ class JSONCreator {
                 { label: 'Case Template', action: 'open-case-template' },
                 { label: 'Import Data to Root', action: 'import-root-data' },
                 { label: 'Reset Root', action: 'reset-root' },
-                { label: 'Bulk Import', action: 'open-bulk-import' }
+                { label: 'Bulk Import', action: 'open-bulk-import' },
+                { separator: true },
+                { label: 'Help', action: 'open-devtool-help' }
             ];
         }
         if (menu.type === 'root-item') {
@@ -1041,20 +1119,29 @@ class JSONCreator {
             ];
         }
         const item = getNode(this.state.tree, menu.path);
-        const folderItems = isFolder(item)
-            ? [
+        if (isFolder(item)) {
+            return [
                 { label: 'New Case', action: 'new-case' },
                 { label: 'New Folder', action: 'new-folder' },
                 { label: 'Bulk Import', action: 'open-bulk-import' },
-                { separator: true }
-            ]
-            : [];
+                { separator: true },
+                { label: 'Rename', action: 'rename-selected' },
+                { label: 'Run', action: 'run-context' },
+                { separator: true },
+                { label: 'Copy', action: 'copy' },
+                { label: 'Paste', action: 'paste', disabled: !this.state.clipboard },
+                { label: 'Copy JSON to Clipboard', action: 'copy-item-json' },
+                { label: 'Move Up', action: 'move-up' },
+                { label: 'Move Down', action: 'move-down' },
+                { separator: true },
+                { label: 'Delete', action: 'delete' }
+            ];
+        }
         return [
-            ...folderItems,
             { label: 'Rename', action: 'rename-selected' },
             { label: 'Run', action: 'run-context' },
-            { label: 'Reset Case', action: 'reset-case-context', disabled: !isCase(item) },
-            { label: 'Set as Template', action: 'set-as-template', disabled: !isCase(item) },
+            { label: 'Reset Case', action: 'reset-case-context' },
+            { label: 'Set as Template', action: 'set-as-template' },
             { separator: true },
             { label: 'Copy', action: 'copy' },
             { label: 'Paste', action: 'paste', disabled: !this.state.clipboard },
@@ -1233,6 +1320,17 @@ class JSONCreator {
         downloadJSON(this.state.activeRoot, this.state.tree);
     }
 
+    trainExtractedJSON() {
+        this.persistRoot();
+        importTrainingJSONData(this.state.activeRoot, clone(this.state.tree), { activate: true, selectAll: true });
+        saveLastScreen('training');
+        this.abortController?.abort();
+        this.root?.remove();
+        this.root = null;
+        renderApp();
+        void generateNewScramble();
+    }
+
     openCaseTemplate() {
         this.state.templateDraft = createTemplateDraft(this.state.caseTemplate);
         this.state.contextMenu = null;
@@ -1374,7 +1472,7 @@ class JSONCreator {
         target.inputBottom = hex.blHex || target.inputBottom;
         this.state.algorithm.tempHex = null;
         if (appendToAlgorithm && isCase(target)) {
-            target.alg = [target.alg || '', algorithmText].filter(Boolean).join(' ').trim();
+            target.alg = [target.alg || '', algorithmText].filter(Boolean).join('\n').trim();
         }
         if (this.state.editor.type === 'case') this.persistRoot();
         showFloatingMessage(appendToAlgorithm ? 'Algorithm applied and appended' : 'Algorithm applied successfully', 'success');
@@ -1492,7 +1590,7 @@ class JSONCreator {
             let failed = 0;
             for (const row of rows) {
                 const caseName = String(row[0] || '').trim();
-                const algorithm = String(row[1] || '').trim();
+                const algorithm = String(row[2] || '').trim();
                 if (!caseName || !algorithm) {
                     failed += 1;
                     continue;
@@ -1661,7 +1759,7 @@ class JSONCreator {
                 run.results.push({
                     caseName: picked.item.caseName,
                     path: picked.labelPath,
-                    scramble,
+                    scramble: formatScrambleDisplay(scramble),
                     postAbf: `(${faceMoveToNumber(auf)},${faceMoveToNumber(adf)})`,
                     preAbf: `(${rul},${rdl})`,
                     equator: equatorLabel(generated.equator),
