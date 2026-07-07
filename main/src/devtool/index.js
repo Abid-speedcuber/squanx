@@ -44,6 +44,12 @@ function faceMoveToNumber(move) {
     return '1';
 }
 
+function equatorLabel(equator) {
+    if (equator === '/') return 'Flipped';
+    if (equator === '|') return 'Solved';
+    return equator || '-';
+}
+
 function showFloatingMessage(message, type = 'info', duration = 3000) {
     const existing = document.querySelector('.floating-message');
     if (existing) existing.remove();
@@ -90,6 +96,8 @@ class JSONCreator {
             tree: {},
             selectedPath: '',
             editorPath: '',
+            renamingPath: '',
+            renamingValue: '',
             expandedFolders: new Set(),
             editor: { type: 'welcome', tab: 'shape' },
             clipboard: null,
@@ -136,6 +144,7 @@ class JSONCreator {
         this.root.addEventListener('input', (event) => this.handleInput(event), options);
         this.root.addEventListener('change', (event) => this.handleChange(event), options);
         this.root.addEventListener('keydown', (event) => this.handleRootKeydown(event), options);
+        this.root.addEventListener('focusout', (event) => this.handleFocusOut(event), options);
         this.root.addEventListener('scroll', () => this.closeInfoBoxes(), { ...options, capture: true });
         document.addEventListener('keydown', (event) => this.handleDocumentKeydown(event), options);
     }
@@ -207,11 +216,10 @@ class JSONCreator {
                         <span style="font-size:18px;">${SQUANX_WORDMARK}</span>
                         <span style="font-size:11px;color:var(--devtool-muted,#666);">Algset Devtool</span>
                     </div>
-                    <button id="rootSelectorBtn" class="json-creator-btn json-creator-btn-secondary" data-action="open-root-selector">${escapeHtml(this.state.activeRoot)}</button>
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
-                    <button class="json-creator-icon-btn" data-action="open-data-management" title="Data Management"><img src="viz/data.svg" width="16" height="16" alt=""></button>
                     <button class="json-creator-icon-btn" data-action="toggle-theme" title="Toggle Theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${themeIcon}</svg></button>
+                    <button class="json-creator-icon-btn" data-action="open-data-management" title="Data Management"><img src="viz/data.svg" width="16" height="16" alt=""></button>
                     <button class="json-creator-icon-btn" data-action="extract-json" title="Extract JSON"><img src="viz/extract.svg" width="16" height="16" alt=""></button>
                     <button class="json-creator-icon-btn" data-action="run-root" title="Run"><img src="viz/run.svg" width="16" height="16" alt=""></button>
                     <button class="json-creator-icon-btn" data-action="close" title="Quit"><img src="viz/exit.svg" width="16" height="16" alt=""></button>
@@ -231,6 +239,7 @@ class JSONCreator {
                     <button class="json-creator-toolbar-btn" data-action="delete" title="Delete"><img src="viz/delete.svg" width="18" height="18" alt=""></button>
                     <button class="json-creator-toolbar-btn" data-action="open-extra-tools" title="Extra Tools"><img src="viz/extra-tools.svg" width="18" height="18" alt=""></button>
                 </div>
+                <button id="rootSelectorBtn" class="json-creator-root-btn" data-action="open-root-selector">Root: ${escapeHtml(this.state.activeRoot)} ↓</button>
                 <div class="json-creator-tree" id="jsonCreatorTree">${this.renderTreeNode(this.state.tree, '', 0)}</div>
             </div>
         `;
@@ -244,13 +253,14 @@ class JSONCreator {
                 const folder = isFolder(item);
                 const expanded = this.state.expandedFolders.has(currentPath);
                 const selected = this.state.selectedPath === currentPath ? 'selected' : '';
+                const renaming = this.state.renamingPath === currentPath;
                 const expander = folder ? (expanded ? '▾' : '▸') : '';
                 const childMarkup = folder && expanded ? this.renderTreeNode(item, currentPath, level + 1) : '';
                 return `
-                    <div class="json-creator-tree-item ${selected}" data-path="${escapeHtml(currentPath)}" data-kind="${folder ? 'folder' : 'case'}" data-action="select-tree-item" style="padding-left:${8 + level * 16}px">
+                    <div class="json-creator-tree-item ${selected} ${renaming ? 'editing' : ''}" data-path="${escapeHtml(currentPath)}" data-kind="${folder ? 'folder' : 'case'}" data-action="select-tree-item" style="--tree-depth:${level};padding-left:${8 + level * 16}px">
                         <span class="tree-expand-icon" data-action="toggle-folder" data-path="${escapeHtml(currentPath)}">${expander}</span>
                         <img class="tree-icon" src="viz/${folder ? 'folder' : 'case'}.svg" width="14" height="14" alt="">
-                        <span class="tree-item-text">${escapeHtml(key)}</span>
+                        ${renaming ? `<input id="treeRenameInput" class="tree-item-input" data-action="tree-rename-input" value="${escapeHtml(this.state.renamingValue || key)}" spellcheck="false">` : `<span class="tree-item-text">${escapeHtml(key)}</span>`}
                     </div>
                     ${childMarkup}
                 `;
@@ -267,7 +277,7 @@ class JSONCreator {
             title = `Case: ${escapeHtml(name)} <button class="json-creator-icon-btn" data-action="run-case" title="Run This Case" style="margin-left:8px;display:inline-flex;vertical-align:middle;"><img src="viz/run.svg" width="14" height="14" alt=""></button><button class="json-creator-icon-btn" data-action="reset-case" title="Reset Case to Template" style="margin-left:4px;display:inline-flex;vertical-align:middle;"><img src="viz/reset.svg" width="14" height="14" alt=""></button>`;
             subtitle = '';
         } else if (this.state.editor.type === 'template') {
-            title = `Case Template <button class="json-creator-icon-btn" data-action="save-template" title="Save Template" style="margin-left:8px;display:inline-flex;vertical-align:middle;"><img src="viz/save.svg" width="14" height="14" alt=""></button> <button class="json-creator-icon-btn" data-action="clear-template" title="Clear Template" style="margin-left:4px;display:inline-flex;vertical-align:middle;"><img src="viz/reset.svg" width="14" height="14" alt=""></button>`;
+            title = 'Case Template';
             subtitle = 'Any new case from now on will be pre-configured according to this case template.';
         }
 
@@ -307,18 +317,25 @@ class JSONCreator {
     renderTemplateEditor() {
         const draft = this.state.templateDraft || createTemplateDraft(this.state.caseTemplate);
         return `
-            <div class="case-editor-tabs">
-                <button class="case-editor-tab ${this.state.editor.tab === 'shape' ? 'active' : ''}" data-action="template-tab" data-tab="shape">Shape Input</button>
-                <button class="case-editor-tab ${this.state.editor.tab === 'additional' ? 'active' : ''}" data-action="template-tab" data-tab="additional">Additional Information</button>
+            <div class="template-editor-frame">
+                <h2>Case Template</h2>
+                <div class="case-editor-tabs">
+                    <button class="case-editor-tab ${this.state.editor.tab === 'shape' ? 'active' : ''}" data-action="template-tab" data-tab="shape">Shape Input</button>
+                    <button class="case-editor-tab ${this.state.editor.tab === 'additional' ? 'active' : ''}" data-action="template-tab" data-tab="additional">Additional Information</button>
+                </div>
+                <div id="templateEditorContent">${this.state.editor.tab === 'shape' ? this.renderShapeTab(draft, true) : this.renderAdditionalTab(draft, true)}</div>
+                <div class="template-editor-actions">
+                    <button class="json-creator-btn json-creator-btn-secondary" data-action="clear-template"><img src="viz/reset.svg" width="14" height="14" alt=""> Reset Template</button>
+                    <button class="json-creator-btn" data-action="save-template"><img src="viz/save.svg" width="14" height="14" alt=""> Save Template</button>
+                </div>
             </div>
-            <div id="templateEditorContent">${this.state.editor.tab === 'shape' ? this.renderShapeTab(draft, true) : this.renderAdditionalTab(draft, true)}</div>
         `;
     }
 
     renderShapeTab(item, template) {
         const prefix = template ? 'template' : 'case';
         return `
-            ${this.renderAlgorithmInput()}
+            ${template ? '' : this.renderAlgorithmInput()}
             <div class="shape-layer-grid">
                 ${this.renderLayerInput('top', item.inputTop || DEFAULT_LAYER, prefix)}
                 ${this.renderLayerInput('bottom', item.inputBottom || DEFAULT_LAYER, prefix)}
@@ -346,7 +363,7 @@ class JSONCreator {
             <div class="json-creator-section shape-layer-card">
                 <h4>${title}</h4>
                 <input id="${layer}LayerInput" class="shape-layer-input" data-layer="${layer}" data-prefix="${prefix}" maxlength="12" value="${escapeHtml(value || DEFAULT_LAYER)}" spellcheck="false">
-                <button class="json-creator-icon-btn" data-action="reset-layer" data-layer="${layer}" title="Reset ${title}"><img src="viz/reset.svg" width="14" height="14" alt=""></button>
+                <button class="json-creator-icon-btn reset-layer-btn" data-action="reset-layer" data-layer="${layer}" title="Reset ${title}"><img src="viz/reset.svg" width="14" height="14" alt=""></button>
                 <div id="${layer}Interactive" class="shape-renderer" data-layer="${layer}" style="display:flex;justify-content:center;margin-top:12px;min-height:210px;"></div>
             </div>
         `;
@@ -406,7 +423,7 @@ class JSONCreator {
             </div>
             ${template ? '' : `
                 <div class="json-creator-section-compact">
-                    <h4>Algorithm</h4>
+                    <h4>Algorithm <button class="json-creator-icon-btn info-btn" type="button" style="display:inline-flex;padding:1px 6px;">i</button><span class="info-box">This is the hint you see by pressing the light bulb in the trainer.</span></h4>
                     <input id="caseAlgorithm" data-field="alg" value="${escapeHtml(item.alg || '')}">
                 </div>
             `}
@@ -616,6 +633,11 @@ class JSONCreator {
             rename.focus();
             rename.select();
         }
+        const treeRename = this.root?.querySelector('#treeRenameInput');
+        if (treeRename) {
+            treeRename.focus();
+            treeRename.select();
+        }
         const runBody = this.root?.querySelector('.run-modal-body');
         if (runBody) {
             runBody.scrollTop = this.state.run?.scrollTop ?? options.runBodyScrollTop ?? 0;
@@ -639,7 +661,7 @@ class JSONCreator {
             if (target.id === 'jsonCreatorTree') {
                 this.state.selectedPath = '';
                 saveSelection(this.state.activeRoot, '');
-                this.update({ contextMenu: null });
+                this.update({ contextMenu: null, modal: this.state.modal?.type === 'root-selector' ? null : this.state.modal });
                 return;
             }
             if (this.state.contextMenu || this.state.modal?.type === 'root-selector') {
@@ -649,12 +671,19 @@ class JSONCreator {
         }
         if (actionElement.classList.contains('disabled')) return;
         const action = actionElement.dataset.action;
+        if (action !== 'tree-rename-input' && this.state.renamingPath && !target.closest('#treeRenameInput')) {
+            this.commitInlineRename();
+        }
         if (actionElement.closest('[data-context-menu]') && this.state.contextMenu?.type !== 'extra') {
             return this.handleContextAction(action);
         }
 
         if (action === 'modal-backdrop' && target === actionElement) return this.closeModal(true);
-        if (action === 'select-tree-item') return this.selectPath(actionElement.dataset.path);
+        if (action === 'tree-rename-input') return;
+        if (action === 'select-tree-item') {
+            if (event.detail >= 2) return this.startInlineRename(actionElement.dataset.path);
+            return this.selectPath(actionElement.dataset.path);
+        }
         if (action === 'toggle-folder') return this.toggleFolder(actionElement.dataset.path);
         if (action === 'toggle-sidebar') return this.update({ sidebarHidden: !this.state.sidebarHidden });
         if (action === 'new-case') return this.newCase();
@@ -704,9 +733,7 @@ class JSONCreator {
     handleDoubleClick(event) {
         const row = event.target.closest('.json-creator-tree-item');
         if (!row) return;
-        const path = row.dataset.path;
-        const name = path.split('/').pop();
-        this.openRename(`Rename ${name}`, name, (newName) => this.renamePath(path, newName));
+        this.startInlineRename(row.dataset.path);
     }
 
     handleContextMenu(event) {
@@ -739,6 +766,10 @@ class JSONCreator {
         const target = event.target;
         if (target.matches('.shape-layer-input')) return this.updateLayer(target.dataset.layer, target.value);
         if (target.dataset.action === 'algorithm-input') return void this.handleAlgorithmInput(target.value);
+        if (target.dataset.action === 'tree-rename-input') {
+            this.state.renamingValue = target.value;
+            return;
+        }
         if (target.dataset.field === 'alg') return this.updateCurrentField('alg', target.value);
     }
 
@@ -757,6 +788,25 @@ class JSONCreator {
             if (event.key === 'Enter') this.confirmRename();
             if (event.key === 'Escape') this.closeModal(false);
         }
+        if (event.target.id === 'treeRenameInput') {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                this.commitInlineRename();
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                this.cancelInlineRename();
+            }
+        }
+    }
+
+    handleFocusOut(event) {
+        if (event.target.id !== 'treeRenameInput') return;
+        setTimeout(() => {
+            if (this.state.renamingPath && document.activeElement?.id !== 'treeRenameInput') {
+                this.commitInlineRename();
+            }
+        }, 0);
     }
 
     handleDocumentKeydown(event) {
@@ -819,9 +869,10 @@ class JSONCreator {
         target.folder[name] = createCaseFromTemplate(name, this.state.caseTemplate);
         if (target.path) this.state.expandedFolders.add(target.path);
         this.persistRoot();
-        this.selectPath(childPath(target.path, name), false);
+        const path = childPath(target.path, name);
+        this.selectPath(path, false);
         this.render();
-        this.openRename(`Rename ${name}`, name, (newName) => this.renamePath(this.state.selectedPath, newName));
+        this.startInlineRename(path);
     }
 
     newFolder(basePath = this.state.selectedPath) {
@@ -833,28 +884,58 @@ class JSONCreator {
         this.state.selectedPath = childPath(target.path, name);
         saveSelection(this.state.activeRoot, this.state.selectedPath);
         this.render();
-        this.openRename(`Rename ${name}`, name, (newName) => this.renamePath(this.state.selectedPath, newName));
+        this.startInlineRename(this.state.selectedPath);
     }
 
     renamePath(path, newName) {
         const trimmed = String(newName || '').trim();
         const info = getParent(this.state.tree, path);
-        if (!trimmed || !info || trimmed === info.key) return this.closeModal(false);
+        if (!trimmed || !info || trimmed === info.key) {
+            this.state.renamingPath = '';
+            this.state.renamingValue = '';
+            return this.closeModal(false);
+        }
         if (info.parent[trimmed]) {
             showFloatingMessage('An item with this name already exists', 'error');
             return;
         }
         const item = info.parent[info.key];
-        delete info.parent[info.key];
-        info.parent[trimmed] = item;
+        const entries = Object.entries(info.parent).map(([key, value]) => key === info.key ? [trimmed, value] : [key, value]);
+        for (const key of Object.keys(info.parent)) delete info.parent[key];
+        for (const [key, value] of entries) info.parent[key] = value;
         if (isCase(item)) item.caseName = trimmed;
         const previousPath = path;
         const renamedPath = childPath(info.parentPath, trimmed);
         this.state.selectedPath = this.replacePathPrefix(this.state.selectedPath, previousPath, renamedPath);
         this.state.editorPath = this.replacePathPrefix(this.state.editorPath, previousPath, renamedPath);
+        this.state.expandedFolders = new Set([...this.state.expandedFolders].map((folderPath) => this.replacePathPrefix(folderPath, previousPath, renamedPath)));
+        this.state.renamingPath = '';
+        this.state.renamingValue = '';
         saveSelection(this.state.activeRoot, this.state.selectedPath);
         this.persistRoot();
         this.closeModal(false);
+    }
+
+    startInlineRename(path) {
+        const info = getParent(this.state.tree, path);
+        if (!info) return;
+        this.state.renamingPath = path;
+        this.state.renamingValue = info.key;
+        this.state.contextMenu = null;
+        this.render();
+    }
+
+    commitInlineRename() {
+        if (!this.state.renamingPath) return;
+        const path = this.state.renamingPath;
+        const value = this.state.renamingValue;
+        this.renamePath(path, value);
+    }
+
+    cancelInlineRename() {
+        this.state.renamingPath = '';
+        this.state.renamingValue = '';
+        this.render();
     }
 
     copy(path = this.state.selectedPath) {
@@ -999,8 +1080,7 @@ class JSONCreator {
         if (action === 'new-folder') return this.newFolder(menu.path);
         if (action === 'open-bulk-import') return this.update({ modal: { type: 'bulk-import', targetPath: menu.path }, contextMenu: null });
         if (action === 'rename-selected') {
-            const name = menu.path.split('/').pop();
-            return this.openRename(`Rename ${name}`, name, (newName) => this.renamePath(menu.path, newName));
+            return this.startInlineRename(menu.path);
         }
         if (action === 'run-context') return this.runPath(menu.path);
         if (action === 'reset-case-context') return this.resetCase(menu.path);
@@ -1011,7 +1091,7 @@ class JSONCreator {
         }
         if (action === 'paste') {
             this.paste(menu.path);
-            return;
+            return this.update({ contextMenu: null });
         }
         if (action === 'move-up') return this.moveSelected(-1, menu.path);
         if (action === 'move-down') return this.moveSelected(1, menu.path);
@@ -1357,8 +1437,11 @@ class JSONCreator {
             placeholderCorner: '#6687a8',
             emptyFill: '#071321ff',
             emptyStroke: '#244b70',
-            ringStroke: '#2f5d88',
-            pieceStroke: '#315b83'
+            ringStroke: 'transparent',
+            pieceStroke: '#315b83',
+            cornerRingStroke: 'transparent',
+            interactionZoneFill: 'rgba(49,91,131,0.08)',
+            interactionZoneStroke: '#315b83'
         };
     }
 
@@ -1581,7 +1664,7 @@ class JSONCreator {
                     scramble,
                     postAbf: `(${faceMoveToNumber(auf)},${faceMoveToNumber(adf)})`,
                     preAbf: `(${rul},${rdl})`,
-                    equator: generated.equator,
+                    equator: equatorLabel(generated.equator),
                     viz
                 });
             } catch (error) {

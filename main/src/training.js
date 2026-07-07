@@ -5,6 +5,7 @@ const AppState = {
     selectedCases: [],
     currentScramble: null,
     previousScramble: null,
+    scrambleHistory: [],
     timerState: 'idle', // idle, preparing, running
     timerStart: 0,
     timerElapsed: 0,
@@ -240,6 +241,7 @@ async function initApp() {
 
 // Get initial timer display value
 function getInitialTimerDisplay() {
+    if (AppState.selectedCases.length === 0) return '--:--';
 
     if (AppState.activeTrainingJSON && AppState.sessionTimes[AppState.activeTrainingJSON]) {
         const times = AppState.sessionTimes[AppState.activeTrainingJSON];
@@ -280,7 +282,9 @@ function railButton(action, icon, label) {
 function renderApp() {
     const app = document.getElementById('app');
     const currentScramble = AppState.currentScramble?.scramble || 'Scramble will show up here';
-    const previousScramble = AppState.previousScramble?.scramble || 'Last scramble will show up here';
+    const previousScramble = AppState.previousScramble
+        ? `${AppState.previousScramble.scramble} (${AppState.previousScramble.caseName || 'Unknown case'})`
+        : 'Last scramble will show up here';
 
     app.innerHTML = `
         ${trainerIconSprite()}
@@ -327,7 +331,7 @@ function renderApp() {
                         </div>
                     </div>
 
-                    <div class="timer-zone timer-box" id="timerZone">
+                    <div class="timer-zone timer-box ${AppState.selectedCases.length === 0 ? 'disabled' : ''}" id="timerZone">
                         <div class="timer-display" id="timerDisplay">${getInitialTimerDisplay()}</div>
                     </div>
 
@@ -376,7 +380,8 @@ function generateVisualization(hexState) {
 // Generate new scramble from selected cases
 async function generateNewScramble() {
     if (AppState.selectedCases.length === 0) {
-        AppState.previousScramble = AppState.currentScramble;
+        if (AppState.currentScramble) AppState.scrambleHistory.push(AppState.currentScramble);
+        AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
         AppState.currentScramble = null;
         renderApp();
         return;
@@ -431,7 +436,8 @@ async function generateNewScramble() {
             }
         }
         
-        AppState.previousScramble = AppState.currentScramble;
+        if (AppState.currentScramble) AppState.scrambleHistory.push(AppState.currentScramble);
+        AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
         AppState.currentScramble = {
             ...result, 
             caseName: randomCase.caseName, 
@@ -441,7 +447,8 @@ async function generateNewScramble() {
         renderApp();
     } catch (error) {
         console.error('Error generating scramble:', error);
-        AppState.previousScramble = AppState.currentScramble;
+        if (AppState.currentScramble) AppState.scrambleHistory.push(AppState.currentScramble);
+        AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
         AppState.currentScramble = {
             hexState: 'Error generating scramble', 
             scramble: 'Error: ' + error.message,
@@ -463,14 +470,12 @@ function setupEventListeners() {
     document.getElementById('scrambleDisplay')?.addEventListener('click', openScrambleDetailModal);
     document.getElementById('previousScrambleDisplay')?.addEventListener('click', openPreviousScrambleModal);
     document.getElementById('prevScrambleBtn')?.addEventListener('click', () => {
-        if (AppState.previousScramble) {
-            const current = AppState.currentScramble;
-            AppState.currentScramble = AppState.previousScramble;
-            AppState.previousScramble = current;
+        if (AppState.scrambleHistory.length > 0) {
+            AppState.currentScramble = AppState.scrambleHistory.pop();
+            AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
             renderApp();
             return;
         }
-        void generateNewScramble();
     });
     document.getElementById('nextScrambleBtn')?.addEventListener('click', () => {
         void generateNewScramble();
@@ -622,15 +627,15 @@ window.importAllAppData = function() {
 };
 
 function removeLastSolve() {
-    if (!AppState.activeTrainingJSON || !AppState.sessionTimes[AppState.activeTrainingJSON]?.length) {
-        showFloatingMessage('No solve to remove', 'info');
+    if (!AppState.selectedCases.length) {
+        showFloatingMessage('No selected case to remove', 'info');
         return;
     }
 
-    AppState.sessionTimes[AppState.activeTrainingJSON].pop();
-    saveSessionTimes();
-    updateTimerDisplay();
-    showFloatingMessage('Last solve removed', 'success');
+    const removed = AppState.selectedCases.pop();
+    saveSelectedCases();
+    showFloatingMessage(`Deselected ${removed.caseName || 'last case'}`, 'success');
+    void generateNewScramble();
 }
 
 // Timer handlers
@@ -639,6 +644,7 @@ let timerHoldStartTime = 0;
 let timerPreparingInterval = null;
 
 function handleTimerMouseDown() {
+    if (AppState.selectedCases.length === 0) return;
     if (AppState.timerState === 'running') return;
     if (AppState.timerState === 'idle') {
         AppState.timerState = 'preparing';
@@ -696,6 +702,7 @@ function handleTimerTouchEnd(e) {
 function handleKeyDown(e) {
     if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();
+        if (AppState.selectedCases.length === 0) return;
         if (!spacePressed) {
             spacePressed = true;
             if (AppState.timerState === 'idle') {
@@ -825,6 +832,10 @@ function updateTimerDisplay() {
     } else if (AppState.timerState === 'idle') {
 
         display.className = 'timer-display';
+        if (AppState.selectedCases.length === 0) {
+            display.textContent = '--:--';
+            return;
+        }
         // Show last time from session
         if (AppState.activeTrainingJSON && AppState.sessionTimes[AppState.activeTrainingJSON]) {
             const times = AppState.sessionTimes[AppState.activeTrainingJSON];
@@ -1046,17 +1057,13 @@ function openCaseSelectionModal() {
     modal.className = 'modal active';
 
     modal.innerHTML = `
-        <div class="modal-content">
+        <div class="modal-content case-selection-content">
             <div class="modal-header">
                 <h2>Select Cases - ${AppState.activeTrainingJSON}</h2>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
             <div class="modal-body">
                 <div class="tree-view" id="caseTree"></div>
-                <div class="button-group">
-                    <button class="btn btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
-                    <button class="btn btn-primary" onclick="saveCaseSelection()">Save Selection</button>
-                </div>
             </div>
         </div>
     `;
@@ -1093,40 +1100,78 @@ function renderCaseTree() {
     if (!treeContainer) return;
 
     const activeData = AppState.trainingJSONs[AppState.activeTrainingJSON] || {};
-    treeContainer.innerHTML = renderTreeNode(activeData, []);
+    treeContainer.innerHTML = renderTreeNode(activeData, [], 0);
 }
 
-function renderTreeNode(node, path) {
+function getCasePaths(node, path = []) {
+    const paths = [];
+    for (const [key, value] of Object.entries(node || {})) {
+        const nextPath = [...path, key];
+        if (value?.caseName !== undefined) paths.push(nextPath.join('.'));
+        else paths.push(...getCasePaths(value, nextPath));
+    }
+    return paths;
+}
+
+function getLongestCaseName(node) {
+    return getCasePaths(node).reduce((longest, path) => {
+        const parts = path.split('.');
+        let current = node;
+        for (const part of parts) current = current?.[part];
+        const name = String(current?.caseName || parts.at(-1) || '');
+        return Math.max(longest, name.length);
+    }, 0);
+}
+
+function getCaseGridColumns(node, depth) {
+    const longest = getLongestCaseName(node);
+    const available = Math.max(260, window.innerWidth * 0.78 - depth * 24);
+    const estimate = longest * 9 + 72;
+    return Math.max(1, Math.min(4, Math.floor(available / Math.max(estimate, 170))));
+}
+
+function isPathSelected(path) {
+    return AppState.selectedCases.some(c => c._path === path);
+}
+
+function renderTreeNode(node, path, depth = 0) {
     let html = '';
 
     for (const [key, value] of Object.entries(node)) {
         const currentPath = [...path, key];
         const pathString = currentPath.join('.');
         const isCase = value.caseName !== undefined;
+        const pathArg = JSON.stringify(pathString);
 
         if (isCase) {
-            const isSelected = AppState.selectedCases.some(c => c._path === pathString);
+            const isSelected = isPathSelected(pathString);
             html += `
-                        <div class="tree-node">
+                        <div class="tree-node tree-node-case" style="--tree-depth:${depth};">
                             <div class="tree-node-header">
-                                <span class="tree-toggle"></span>
                                 <input type="checkbox" class="tree-checkbox" 
                                     ${isSelected ? 'checked' : ''} 
-                                    onchange="toggleCaseSelection('${pathString}', this.checked)"
+                                    onchange='toggleCaseSelection(${pathArg}, this.checked)'
                                 >
                                 <span class="tree-label">${value.caseName || key}</span>
                             </div>
                         </div>
                     `;
         } else {
+            const casePaths = getCasePaths(value, currentPath);
+            const allSelected = casePaths.length > 0 && casePaths.every(isPathSelected);
+            const childColumns = getCaseGridColumns(value, depth + 1);
             html += `
-                        <div class="tree-node">
-                            <div class="tree-node-header" onclick="toggleTreeNode(this)">
-                                <span class="tree-toggle">▶</span>
+                        <div class="tree-node tree-node-folder" style="--tree-depth:${depth};">
+                            <div class="tree-node-header">
+                                <input type="checkbox" class="tree-checkbox" 
+                                    ${allSelected ? 'checked' : ''} 
+                                    onchange='toggleFolderSelection(${pathArg}, this.checked)'
+                                >
                                 <span class="tree-label">${key}</span>
+                                <button class="tree-toggle" type="button" onclick="toggleTreeNode(this.closest('.tree-node-header'))">▼</button>
                             </div>
-                            <div class="tree-children">
-                                ${renderTreeNode(value, currentPath)}
+                            <div class="tree-children expanded" style="--case-columns:${childColumns};">
+                                ${renderTreeNode(value, currentPath, depth + 1)}
                             </div>
                         </div>
                     `;
@@ -1142,7 +1187,7 @@ window.toggleTreeNode = function (header) {
 
     if (children.classList.contains('expanded')) {
         children.classList.remove('expanded');
-        toggle.textContent = '▶';
+        toggle.textContent = '›';
     } else {
         children.classList.add('expanded');
         toggle.textContent = '▼';
@@ -1165,12 +1210,36 @@ window.toggleCaseSelection = function (path, checked) {
     } else {
         AppState.selectedCases = AppState.selectedCases.filter(c => c._path !== path);
     }
+    saveSelectedCases();
+    document.getElementById('caseCount').textContent = `${AppState.selectedCases.length} selected`;
+    renderCaseTree();
+    void generateNewScramble();
 };
 
-window.saveCaseSelection = function () {
+window.toggleFolderSelection = function (path, checked) {
+    const pathParts = path.split('.');
+    const activeData = AppState.trainingJSONs[AppState.activeTrainingJSON];
+    let current = activeData;
+
+    for (const part of pathParts) {
+        current = current[part];
+    }
+
+    const paths = getCasePaths(current, pathParts);
+    if (checked) {
+        for (const casePath of paths) {
+            if (!AppState.selectedCases.some(c => c._path === casePath)) {
+                let caseNode = activeData;
+                for (const part of casePath.split('.')) caseNode = caseNode[part];
+                AppState.selectedCases.push({ ...caseNode, _path: casePath, _jsonName: AppState.activeTrainingJSON });
+            }
+        }
+    } else {
+        AppState.selectedCases = AppState.selectedCases.filter(c => !paths.includes(c._path));
+    }
     saveSelectedCases();
-    document.querySelector('.modal').remove();
-    document.getElementById('caseCount').textContent = `${AppState.selectedCases.length} case(s) selected`;
+    document.getElementById('caseCount').textContent = `${AppState.selectedCases.length} selected`;
+    renderCaseTree();
     void generateNewScramble();
 };
 
@@ -1193,10 +1262,13 @@ function openSettingsModal() {
                 </label>
                 <label class="settings-row">
                     <span>Starting cue</span>
-                    <input type="number" class="settings-input cue-input" id="cueDurationInput"
-                        min="0.0" max="0.5" step="0.05"
-                        value="${AppState.settings.startingCueDuration}"
-                        onchange="changeCueDuration(this.value)">
+                    <span class="cue-input-wrap">
+                        <input type="number" class="settings-input cue-input" id="cueDurationInput"
+                            min="0.0" max="0.5" step="0.05"
+                            value="${AppState.settings.startingCueDuration}"
+                            onchange="changeCueDuration(this.value)">
+                        <span>sec</span>
+                    </span>
                 </label>
             </div>
         </div>

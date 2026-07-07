@@ -19,7 +19,11 @@ const DEFAULT_COLOR_SCHEME = {
     placeholderWhiteCorner: '#ffffffff',
     emptyFill: '#f6f6f6ff',
     emptyStroke: '#d0d0d0',
-    ringStroke: 'transparent'
+    ringStroke: 'transparent',
+    pieceStroke: '#9a9a9a',
+    cornerRingStroke: 'transparent',
+    interactionZoneFill: 'rgba(0,0,0,0.05)',
+    interactionZoneStroke: 'rgba(0,0,0,0.3)'
 };
 
 // === PIECE DEFINITIONS FACTORY ===
@@ -319,6 +323,8 @@ function getUsedPieces(fullText, excludePosition) {
 function renderCluster(cluster, state, targetCx, targetCy, centerAngle, layer, position, dimensions) {
     const { r_inner, r_outer, r_outer_apex } = dimensions;
     const pieceStroke = dimensions.colorScheme?.pieceStroke || '#333';
+    const interactionZoneFill = dimensions.colorScheme?.interactionZoneFill || 'rgba(0,0,0,0.05)';
+    const interactionZoneStroke = dimensions.colorScheme?.interactionZoneStroke || 'rgba(0,0,0,0.3)';
     const half = cluster.type === 'corner' ? 30 : 15;
     let mainSVG = '';
     let interactionZones = '';
@@ -423,7 +429,7 @@ function renderCluster(cluster, state, targetCx, targetCy, centerAngle, layer, p
             const cornerP4 = polarToCartesian(targetCx, targetCy, cornerInnerR, zoneAngle + cornerSegmentHalf);
 
             interactionZones += `<polygon points="${pointsToString([cornerP1, cornerP2, cornerP3, cornerP4])}" 
-                     fill="rgba(0,0,0,0.05)" stroke="rgba(0,0,0,0.3)" stroke-width="0.8"
+                     fill="${interactionZoneFill}" stroke="${interactionZoneStroke}" stroke-width="0.8"
                      class="corner-interaction-zone" 
                      data-position="${idx}" 
                      data-layer="${layer}" 
@@ -437,7 +443,7 @@ function renderCluster(cluster, state, targetCx, targetCy, centerAngle, layer, p
         const cornerP4 = polarToCartesian(targetCx, targetCy, cornerInnerR, centerAngle + cornerSegmentHalf);
 
         interactionZones += `<polygon points="${pointsToString([cornerP1, cornerP2, cornerP3, cornerP4])}" 
-                   fill="rgba(0,0,0,0.05)" stroke="rgba(0,0,0,0.3)" stroke-width="0.8"
+                   fill="${interactionZoneFill}" stroke="${interactionZoneStroke}" stroke-width="0.8"
                    class="corner-interaction-zone" 
                    data-position="${position}" 
                    data-layer="${layer}" 
@@ -483,7 +489,7 @@ function createInteractiveSVG(state, options = {}) {
     if (hasTopLayer) {
         svgHTML += `<svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}" class="cluster-svg interactive-svg" data-layer="top">`;
         svgHTML += `<circle cx="${cx}" cy="${cy}" r="${dimensions.ringR}" fill="none" stroke="${dimensions.colorScheme?.ringStroke || '#e0e0e0'}" stroke-width="2"/>`;
-        svgHTML += `<circle cx="${cx}" cy="${cy}" r="${dimensions.cornerRingR}" class="corner-ring" fill="none" stroke="rgba(255,0,0,0.1)" stroke-width="1" stroke-dasharray="2,2"/>`;
+        svgHTML += `<circle cx="${cx}" cy="${cy}" r="${dimensions.cornerRingR}" class="corner-ring" fill="none" stroke="${dimensions.colorScheme?.cornerRingStroke || 'transparent'}" stroke-width="1" stroke-dasharray="2,2"/>`;
         const p1L = polarToCartesian(cx, cy, dimensions.ringR + 6, 75);
         const p2L = polarToCartesian(cx, cy, dimensions.ringR + 6, 255);
         svgHTML += `<line x1="${p1L.x}" y1="${p1L.y}" x2="${p2L.x}" y2="${p2L.y}" stroke="#d32f2f" stroke-width="3" pointer-events="none"/>`;
@@ -542,7 +548,7 @@ function createInteractiveSVG(state, options = {}) {
     if (hasBottomLayer) {
         svgHTML += `<svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}" class="cluster-svg interactive-svg" data-layer="bottom">`;
         svgHTML += `<circle cx="${cx}" cy="${cy}" r="${dimensions.ringR}" fill="none" stroke="${dimensions.colorScheme?.ringStroke || '#e0e0e0'}" stroke-width="2"/>`;
-        svgHTML += `<circle cx="${cx}" cy="${cy}" r="${dimensions.cornerRingR}" class="corner-ring" fill="none" stroke="rgba(255,0,0,0.1)" stroke-width="1" stroke-dasharray="2,2"/>`;
+        svgHTML += `<circle cx="${cx}" cy="${cy}" r="${dimensions.cornerRingR}" class="corner-ring" fill="none" stroke="${dimensions.colorScheme?.cornerRingStroke || 'transparent'}" stroke-width="1" stroke-dasharray="2,2"/>`;
         const p1R = polarToCartesian(cx, cy, dimensions.ringR + 6, 105);
         const p2R = polarToCartesian(cx, cy, dimensions.ringR + 6, 285);
         svgHTML += `<line x1="${p1R.x}" y1="${p1R.y}" x2="${p2R.x}" y2="${p2R.y}" stroke="#d32f2f" stroke-width="3" pointer-events="none"/>`;
@@ -805,16 +811,13 @@ function setupInteractiveEvents(state, containerId) {
 
         // Right click for piece selection modal (desktop only - mobile uses long press)
         newSlot.addEventListener('contextmenu', (e) => {
-            // Only handle if not from touch device
-            if (e.pointerType !== 'touch' && !('ontouchstart' in window)) {
-                e.preventDefault();
-                e.stopPropagation();
-                const position = parseInt(newSlot.dataset.position);
-                const layer = newSlot.dataset.layer;
-                const isCornerZone = newSlot.classList.contains('corner-interaction-zone');
+            e.preventDefault();
+            e.stopPropagation();
+            const position = parseInt(newSlot.dataset.position);
+            const layer = newSlot.dataset.layer;
+            const isCornerZone = newSlot.classList.contains('corner-interaction-zone');
 
-                showPieceSelectionModal(state, position, layer, isCornerZone, e.clientX, e.clientY, containerId);
-            }
+            showPieceSelectionModal(state, position, layer, isCornerZone, e.clientX, e.clientY, containerId);
         });
 
         // Long press for touch devices

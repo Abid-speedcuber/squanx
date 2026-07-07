@@ -395,6 +395,12 @@ body.theme-light .squango-go {
     cursor: pointer;
 }
 
+.timer-zone.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .timer-display {
     font-family: Arial, sans-serif;
     font-size: clamp(3rem, min(22vw, 22dvh), 8rem);
@@ -575,7 +581,24 @@ select.settings-input {
 
 .cue-input {
     width: 110px;
+    color-scheme: dark;
+}
+
+body.theme-light .cue-input {
+    color-scheme: light;
+}
+
+.cue-input-wrap {
     margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-muted);
+}
+
+.cue-input::-webkit-inner-spin-button,
+.cue-input::-webkit-outer-spin-button {
+    background: var(--field-bg);
 }
 
 .settings-input:focus,
@@ -696,10 +719,13 @@ textarea.settings-input {
 
 .tree-view {
     font-size: 0.95rem;
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
 }
 
 .tree-node {
     margin-left: 18px;
+    position: relative;
 }
 
 .tree-node-header {
@@ -710,6 +736,7 @@ textarea.settings-input {
     padding: 6px 8px;
     border-radius: 7px;
     cursor: pointer;
+    position: relative;
 }
 
 .tree-node-header:hover {
@@ -717,25 +744,81 @@ textarea.settings-input {
 }
 
 .tree-toggle {
-    width: 16px;
+    margin-left: auto;
+    width: 24px;
+    height: 24px;
+    border: 1px solid transparent;
+    background: transparent;
     color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1;
+    position: relative;
+    z-index: 1;
 }
 
 .tree-checkbox {
     accent-color: var(--border-col);
+    position: relative;
+    z-index: 1;
 }
 
 .tree-label {
     flex: 1;
     color: var(--text-main);
+    position: relative;
+    z-index: 1;
 }
 
 .tree-children {
     display: none;
+    position: relative;
+    grid-template-columns: repeat(var(--case-columns, 1), minmax(0, 1fr));
+    gap: 2px 8px;
 }
 
 .tree-children.expanded {
-    display: block;
+    display: grid;
+}
+
+.tree-node-folder {
+    grid-column: 1 / -1;
+}
+
+.tree-node-case {
+    min-width: 0;
+}
+
+.tree-node::before {
+    content: "";
+    position: absolute;
+    left: calc(var(--tree-depth, 0) * 24px + 9px);
+    top: 0;
+    bottom: -6px;
+    width: 1px;
+    background: var(--divider-soft);
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.tree-node-header::before {
+    content: "";
+    position: absolute;
+    left: calc(var(--tree-depth, 0) * 24px + 9px);
+    top: 50%;
+    width: 13px;
+    height: 1px;
+    background: var(--divider-soft);
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+.case-selection-content {
+    height: auto;
+    max-height: calc(100vh - 28px);
+}
+
+.case-selection-content .modal-body {
+    max-height: calc(100vh - 96px);
 }
 
 .help-content,
