@@ -5,6 +5,7 @@
 }
 
 :root {
+    --brand-font: 'Unbounded', Arial, sans-serif;
     --border-col: #75b3f0;
     --button-col: #12324abf;
     --button-active-col: #174a66;
@@ -156,11 +157,11 @@ button:disabled {
 }
 
 .squango {
-    font-family: Arial, sans-serif;
+    font-family: var(--brand-font);
     font-size: 1.3rem;
-    font-weight: 900;
+    font-weight: 800;
     line-height: 1;
-    letter-spacing: 0;
+    letter-spacing: -0.02em;
     white-space: nowrap;
     cursor: pointer;
     transition: opacity 0.18s ease;

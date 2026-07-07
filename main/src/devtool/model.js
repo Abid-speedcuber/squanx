@@ -14,11 +14,11 @@ const DEFAULT_CASE = Object.freeze({
     alg: ''
 });
 
-const MOVE_OPTIONS = ['U0', 'U1', 'U2', 'U3', 'U4', 'U5', 'U6', 'U-1', 'U-2', 'U-3', 'U-4', 'U-5'];
-const DOWN_MOVE_OPTIONS = ['D0', 'D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D-1', 'D-2', 'D-3', 'D-4', 'D-5'];
-const NUMBER_OPTIONS = [-6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6];
+const MOVE_OPTIONS = ['U0', 'U', 'U2', "U'"];
+const DOWN_MOVE_OPTIONS = ['D0', 'D', 'D2', "D'"];
+const NUMBER_OPTIONS = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6];
 const EQUATOR_OPTIONS = ['/', '|'];
-const PARITY_OPTIONS = ['on', 'op', 'ep', 'cp'];
+const PARITY_OPTIONS = ['on', 'op', 'tnbn', 'tpbn', 'tnbp', 'tpbp'];
 
 function clone(value) {
     if (value == null) return value;

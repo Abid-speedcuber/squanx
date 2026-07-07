@@ -3,10 +3,8 @@ import { AppState, DEFAULT_ALGSET, generateNewScramble, renderApp, saveDevelopin
 import {
     DEFAULT_LAYER,
     DOWN_MOVE_OPTIONS,
-    EQUATOR_OPTIONS,
     MOVE_OPTIONS,
     NUMBER_OPTIONS,
-    PARITY_OPTIONS,
     childPath,
     clone,
     collectCases,
@@ -36,8 +34,18 @@ import {
     saveSelection,
     saveTemplate
 } from './storage.js';
+import { normalizeAlgorithmInput } from './parseAdapter.js';
 
-const RUN_COUNT = 12;
+const RUN_COUNT = 100;
+const SQUANX_WORDMARK = '<span class="squanx-brand"><span class="squango-sq">Squan</span><span class="squango-go">X</span></span>';
+
+function faceMoveToNumber(move) {
+    const value = String(move || '').trim();
+    if (!value || value.endsWith('0')) return '0';
+    if (value.endsWith('2')) return '2';
+    if (value.endsWith("'")) return '-1';
+    return '1';
+}
 
 function showFloatingMessage(message, type = 'info', duration = 3000) {
     const existing = document.querySelector('.floating-message');
@@ -85,6 +93,7 @@ class JSONCreator {
             activeRoot: 'default',
             tree: {},
             selectedPath: '',
+            editorPath: '',
             expandedFolders: new Set(),
             editor: { type: 'welcome', tab: 'shape' },
             clipboard: null,
@@ -140,12 +149,29 @@ class JSONCreator {
     restoreSelection() {
         const selection = loadSelection();
         if (selection.root === this.state.activeRoot && selection.path && getNode(this.state.tree, selection.path)) {
-            this.selectPath(selection.path, false);
+            this.state.selectedPath = selection.path;
+            saveSelection(this.state.activeRoot, selection.path);
+            const selected = getNode(this.state.tree, selection.path);
+            if (isCase(selected)) {
+                this.state.editorPath = selection.path;
+                this.state.editor = { type: 'case', tab: 'shape' };
+            } else {
+                const firstCase = findFirstCase(this.state.tree);
+                if (firstCase) {
+                    this.state.editorPath = firstCase.path;
+                    this.state.editor = { type: 'case', tab: 'shape' };
+                }
+            }
             return;
         }
 
         const firstCase = findFirstCase(this.state.tree);
-        if (firstCase) this.selectPath(firstCase.path, false);
+        if (firstCase) {
+            this.state.selectedPath = firstCase.path;
+            this.state.editorPath = firstCase.path;
+            saveSelection(this.state.activeRoot, firstCase.path);
+            this.state.editor = { type: 'case', tab: 'shape' };
+        }
         else this.setEditor('welcome');
     }
 
@@ -179,7 +205,7 @@ class JSONCreator {
                 <div style="display:flex;align-items:center;gap:12px;">
                     <button class="json-creator-icon-btn" data-action="toggle-sidebar" title="Toggle Sidebar"><img src="viz/hamburger-menu.svg" width="16" height="16" alt=""></button>
                     <div style="display:flex;flex-direction:column;line-height:1.2;">
-                        <span style="font-size:18px;font-weight:700;">squanx</span>
+                        <span style="font-size:18px;">${SQUANX_WORDMARK}</span>
                         <span style="font-size:11px;color:var(--devtool-muted,#666);">Algset Devtool</span>
                     </div>
                     <button id="rootSelectorBtn" class="json-creator-btn json-creator-btn-secondary" data-action="open-root-selector">${escapeHtml(this.state.activeRoot)}</button>
@@ -233,11 +259,11 @@ class JSONCreator {
     }
 
     renderEditorHeader() {
-        const selected = getNode(this.state.tree, this.state.selectedPath);
-        let title = 'squanx';
+        const selected = this.getEditorCase();
+        let title = SQUANX_WORDMARK;
         let subtitle = 'Case Editor';
         if (this.state.editor.type === 'case' && isCase(selected)) {
-            const name = selected.caseName || this.state.selectedPath.split('/').pop();
+            const name = selected.caseName || this.state.editorPath.split('/').pop();
             title = `Case: ${escapeHtml(name)} <button class="json-creator-icon-btn" data-action="run-case" title="Run This Case" style="margin-left:8px;display:inline-flex;vertical-align:middle;"><img src="viz/run.svg" width="14" height="14" alt=""></button>`;
             subtitle = '';
         } else if (this.state.editor.type === 'template') {
@@ -255,11 +281,11 @@ class JSONCreator {
 
     renderEditorBody() {
         if (this.state.editor.type === 'template') return this.renderTemplateEditor();
-        const selected = getNode(this.state.tree, this.state.selectedPath);
+        const selected = this.getEditorCase();
         if (this.state.editor.type === 'case' && isCase(selected)) return this.renderCaseEditor(selected);
         return `
             <div class="json-creator-welcome">
-                <h3>Welcome to squanx</h3>
+                <h3>Welcome to ${SQUANX_WORDMARK}</h3>
                 <p>Create and organize your Square-1 algset cases.</p>
                 <p>Use the toolbar to add folders and cases.</p>
             </div>
@@ -290,26 +316,40 @@ class JSONCreator {
     renderShapeTab(item, template) {
         const prefix = template ? 'template' : 'case';
         return `
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+            <div class="json-creator-section">
+                <div class="algorithm-mode-group">
+                    <label class="algorithm-mode-label"><input type="checkbox" data-action="toggle-algorithm-mode" ${this.state.algorithm.enabled ? 'checked' : ''}> Input shape using algorithm text</label>
+                </div>
+                ${this.state.algorithm.enabled ? this.renderAlgorithmInput() : ''}
+            </div>
+            <div class="shape-layer-grid">
                 ${this.renderLayerInput('top', item.inputTop || DEFAULT_LAYER, prefix)}
                 ${this.renderLayerInput('bottom', item.inputBottom || DEFAULT_LAYER, prefix)}
             </div>
-            <div class="algorithm-mode-group">
-                <label class="algorithm-mode-label"><input type="checkbox" data-action="toggle-algorithm-mode" ${this.state.algorithm.enabled ? 'checked' : ''}> Algorithm input mode</label>
+            <div class="json-creator-section">
+                <h4>Constraints</h4>
+                <p style="font-size:12px;color:var(--devtool-muted,#666);margin:0 0 12px;font-style:italic;">Don't touch this unless you know what you are doing</p>
+                ${this.renderConstraints(item.constraints || {})}
+                <div class="json-creator-form-group">
+                    <label>Position (e.g., A, BC, D)</label>
+                    <input id="constraintPosition" placeholder="Enter position...">
+                </div>
+                <div class="json-creator-form-group">
+                    <label>Allowed Pieces (comma-separated)</label>
+                    <input id="constraintValues" placeholder="e.g., 1,3,5,7">
+                </div>
+                <button class="json-creator-btn" data-action="add-constraint" data-prefix="${prefix}">Add Constraint</button>
             </div>
-            ${this.state.algorithm.enabled ? this.renderAlgorithmInput() : ''}
         `;
     }
 
     renderLayerInput(layer, value, prefix) {
         const title = layer === 'top' ? 'Top layer' : 'Bottom layer';
         return `
-            <div class="json-creator-section">
+            <div class="json-creator-section shape-layer-card">
                 <h4>${title}</h4>
                 <input id="${layer}LayerInput" class="shape-layer-input" data-layer="${layer}" data-prefix="${prefix}" maxlength="12" value="${escapeHtml(value || DEFAULT_LAYER)}" spellcheck="false">
-                <div style="display:flex;gap:8px;margin-top:10px;">
-                    <button class="json-creator-btn json-creator-btn-secondary" data-action="reset-layer" data-layer="${layer}">Reset</button>
-                </div>
+                <button class="json-creator-icon-btn" data-action="reset-layer" data-layer="${layer}" title="Reset ${title}"><img src="viz/reset.svg" width="14" height="14" alt=""></button>
                 <div id="${layer}Interactive" class="shape-renderer" data-layer="${layer}" style="display:flex;justify-content:center;margin-top:12px;min-height:210px;"></div>
             </div>
         `;
@@ -319,13 +359,11 @@ class JSONCreator {
         return `
             <div class="algorithm-input-section">
                 <div class="algorithm-input-controls">
-                    <label class="algorithm-notation-label"><input type="radio" name="algorithmNotation" value="normal" data-action="algorithm-notation" ${this.state.algorithm.notation === 'normal' ? 'checked' : ''}> Normal</label>
-                    <label class="algorithm-notation-label"><input type="radio" name="algorithmNotation" value="karnotation" data-action="algorithm-notation" ${this.state.algorithm.notation === 'karnotation' ? 'checked' : ''}> Karnotation</label>
+                    <input id="algorithmTextInput" class="algorithm-text-input" data-action="algorithm-input" placeholder="Input algorithm (normal notation, karnotation, or shorthand)" value="${escapeHtml(this.state.algorithm.text)}">
+                    <button class="algorithm-apply-btn" data-action="apply-algorithm">Apply</button>
                 </div>
-                <textarea id="algorithmTextInput" class="algorithm-text-input" data-action="algorithm-input" placeholder="Paste an algorithm">${escapeHtml(this.state.algorithm.text)}</textarea>
-                <div style="display:flex;gap:8px;margin-top:10px;">
-                    <button class="algorithm-apply-btn" data-action="apply-algorithm" ${this.state.algorithm.tempHex ? '' : 'disabled'}>Apply algorithm</button>
-                    <button class="algorithm-copy-btn" data-action="copy-algorithm-field" ${this.state.algorithm.lastApplied ? '' : 'style="display:none;"'}>Copy to algorithm field</button>
+                <div class="algorithm-applied-actions" ${this.state.algorithm.lastApplied ? '' : 'style="display:none;"'}>
+                    <button class="algorithm-copy-btn" data-action="copy-algorithm-field">Copy this algorithm to the algorithm field below</button>
                 </div>
             </div>
         `;
@@ -333,54 +371,60 @@ class JSONCreator {
 
     renderAdditionalTab(item, template) {
         const prefix = template ? 'template' : 'case';
+        const parityMode = this.getParityMode(item);
         return `
-            <div class="json-creator-section">
-                <h4>Equator</h4>
-                <div class="json-creator-grid">${EQUATOR_OPTIONS.map((value) => this.renderCheckbox(prefix, 'equator', value, item.equator?.includes(value))).join('')}</div>
+            <div class="json-creator-section-compact">
+                <h4>Middle Layer</h4>
+                <div class="json-creator-grid">
+                    ${this.renderCheckbox(prefix, 'equator', '|', item.equator?.includes('|'), 'string', 'Solved')}
+                    ${this.renderCheckbox(prefix, 'equator', '/', item.equator?.includes('/'), 'string', 'Flipped')}
+                </div>
             </div>
-            <div class="json-creator-section">
-                <h4>Parity <button class="json-creator-icon-btn info-btn" type="button" style="display:inline-flex;padding:2px 6px;">?</button><span class="info-box">Overall parity defines a state of the Square-1. Color-specific parity decides explicit color-piece arrangements. Test cases after changing this.</span></h4>
-                <div class="json-creator-grid">${PARITY_OPTIONS.map((value) => this.renderCheckbox(prefix, 'parity', value, item.parity?.includes(value))).join('')}</div>
+            <div class="json-creator-section-compact">
+                <h4>Parity <button class="json-creator-icon-btn info-btn" type="button" style="display:inline-flex;padding:1px 6px;">i</button><span class="info-box">Overall parity defines a Square-1 state, but may not be the state you are aiming for. Color specific parity decides explicit color-piece arrangements.</span></h4>
+                <div class="parity-radio-group">
+                    ${['ignore', 'overall', 'color-specific'].map((mode) => `
+                        <label class="json-creator-grid-item"><input type="radio" name="${prefix}ParityMode" data-action="parity-mode" data-prefix="${prefix}" value="${mode}" ${parityMode === mode ? 'checked' : ''}> ${mode === 'color-specific' ? 'Color Specific' : mode[0].toUpperCase() + mode.slice(1)}</label>
+                    `).join('')}
+                </div>
+                <div class="parity-checkboxes-vertical">
+                    ${this.renderParityOptions(prefix, item, parityMode)}
+                </div>
             </div>
-            <div class="json-creator-section">
-                <h4>AUF</h4>
-                <div class="json-creator-grid">${MOVE_OPTIONS.map((value) => this.renderCheckbox(prefix, 'auf', value, item.auf?.includes(value))).join('')}</div>
+            <div class="json-creator-section-compact">
+                <h4>Post ABF <button class="json-creator-icon-btn info-btn" type="button" style="display:inline-flex;padding:1px 6px;">i</button><span class="info-box">Post ABF is Adjustment of Both Face after the algorithm is done.</span></h4>
+                <div class="abf-grid">
+                    ${MOVE_OPTIONS.map((value) => this.renderCheckbox(prefix, 'auf', value, item.auf?.includes(value))).join('')}
+                    ${DOWN_MOVE_OPTIONS.map((value) => this.renderCheckbox(prefix, 'adf', value, item.adf?.includes(value))).join('')}
+                </div>
             </div>
-            <div class="json-creator-section">
-                <h4>ADF</h4>
-                <div class="json-creator-grid">${DOWN_MOVE_OPTIONS.map((value) => this.renderCheckbox(prefix, 'adf', value, item.adf?.includes(value))).join('')}</div>
-            </div>
-            <div class="json-creator-section">
-                <h4>RUL</h4>
-                <div class="json-creator-grid">${NUMBER_OPTIONS.map((value) => this.renderCheckbox(prefix, 'rul', value, item.rul?.includes(value), 'number')).join('')}</div>
-            </div>
-            <div class="json-creator-section">
-                <h4>RDL</h4>
-                <div class="json-creator-grid">${NUMBER_OPTIONS.map((value) => this.renderCheckbox(prefix, 'rdl', value, item.rdl?.includes(value), 'number')).join('')}</div>
-            </div>
-            <div class="json-creator-section">
-                <h4>Constraints</h4>
-                ${this.renderConstraints(item.constraints || {})}
-                <div style="display:grid;grid-template-columns:120px 1fr auto;gap:8px;margin-top:12px;">
-                    <input id="constraintPosition" placeholder="Position">
-                    <input id="constraintValues" placeholder="Values, comma separated">
-                    <button class="json-creator-btn" data-action="add-constraint" data-prefix="${prefix}">Add</button>
+            <div class="json-creator-section-compact">
+                <h4>Pre ABF <button class="json-creator-icon-btn info-btn" type="button" style="display:inline-flex;padding:1px 6px;">i</button><span class="info-box">Pre ABF is the adjustment you do before doing an alg.</span></h4>
+                <div class="pre-abf-container">
+                    <div class="pre-abf-section">
+                        <h5>Pre AUF</h5>
+                        <div class="pre-abf-grid">${NUMBER_OPTIONS.map((value) => this.renderCheckbox(prefix, 'rul', value, item.rul?.includes(value), 'number')).join('')}</div>
+                    </div>
+                    <div class="pre-abf-section">
+                        <h5>Pre ADF</h5>
+                        <div class="pre-abf-grid">${NUMBER_OPTIONS.map((value) => this.renderCheckbox(prefix, 'rdl', value, item.rdl?.includes(value), 'number')).join('')}</div>
+                    </div>
                 </div>
             </div>
             ${template ? '' : `
-                <div class="json-creator-form-group">
-                    <label for="caseAlgorithm">Algorithm</label>
-                    <textarea id="caseAlgorithm" data-field="alg">${escapeHtml(item.alg || '')}</textarea>
+                <div class="json-creator-section-compact">
+                    <h4>Algorithm</h4>
+                    <input id="caseAlgorithm" data-field="alg" value="${escapeHtml(item.alg || '')}">
                 </div>
             `}
         `;
     }
 
-    renderCheckbox(prefix, field, value, checked, type = 'string') {
+    renderCheckbox(prefix, field, value, checked, type = 'string', label = value) {
         return `
             <label class="json-creator-grid-item">
                 <input type="checkbox" data-prefix="${prefix}" data-field="${field}" data-value="${escapeHtml(value)}" data-value-type="${type}" ${checked ? 'checked' : ''}>
-                <span>${escapeHtml(value)}</span>
+                <span>${escapeHtml(label)}</span>
             </label>
         `;
     }
@@ -394,6 +438,20 @@ class JSONCreator {
                 <button class="json-creator-btn json-creator-btn-secondary" data-action="remove-constraint" data-position="${escapeHtml(position)}">Remove</button>
             </div>
         `).join('');
+    }
+
+    getParityMode(item) {
+        if (!Array.isArray(item.parity) || item.parity.length === 0) return 'ignore';
+        if (item.parity.some((value) => value === 'on' || value === 'op')) return 'overall';
+        return 'color-specific';
+    }
+
+    renderParityOptions(prefix, item, parityMode) {
+        if (parityMode === 'ignore') return '';
+        const options = parityMode === 'overall'
+            ? [['on', 'Overall No Parity'], ['op', 'Overall Parity']]
+            : [['tnbn', 'Both Color No Parity'], ['tpbn', 'Black Parity, White No Parity'], ['tnbp', 'Black No Parity, White Parity'], ['tpbp', 'Both Color Parity']];
+        return options.map(([value, label]) => this.renderCheckbox(prefix, 'parity', value, item.parity?.includes(value), 'string', label)).join('');
     }
 
     renderContextMenu() {
@@ -506,12 +564,8 @@ class JSONCreator {
                 <div class="modal-content devtool-modal" style="max-width:600px;">
                     <div class="modal-header"><h2>Bulk Import</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body">
-                        <p>First column: case name. Second column: algorithm.</p>
+                        <p>First column: case name. Second column: algorithm. Normal notation, karnotation, and shorthand are accepted automatically.</p>
                         <input type="file" id="bulkImportFile" accept=".csv,.xlsx">
-                        <div style="display:flex;gap:12px;margin-top:12px;">
-                            <label><input type="radio" name="bulkImportNotation" value="normal" checked> Normal</label>
-                            <label><input type="radio" name="bulkImportNotation" value="karnotation"> Karnotation</label>
-                        </div>
                         <button class="json-creator-btn" data-action="process-bulk-import" style="margin-top:16px;width:100%;">Import</button>
                     </div>
                 </div>
@@ -540,20 +594,22 @@ class JSONCreator {
         return `
             <div class="run-modal">
                 <div class="run-modal-content">
-                    <div class="run-modal-header"><h2>Run: ${escapeHtml(run.name)}</h2><button class="close-btn" data-action="close-run">×</button></div>
+                    <div class="run-modal-header"><h2>Running: ${escapeHtml(run.name)}</h2><button class="close-btn" data-action="close-run">×</button></div>
                     <div class="run-modal-progress">
-                        <div class="progress-bar-container"><div class="progress-bar-fill" style="width:${run.progress}%"></div><div class="progress-text">${run.progress}%</div></div>
+                        <div class="progress-bar-container"><div class="progress-bar-fill" style="width:${run.progress}%"></div><div class="progress-text">${run.results.length} / ${RUN_COUNT}</div></div>
                         <button class="json-creator-btn json-creator-btn-secondary" data-action="stop-run" ${run.stopped || run.done ? 'disabled' : ''}>Stop</button>
                     </div>
                     <div class="run-modal-body">${run.results.map((result) => `
                         <div class="scramble-result-item">
                             <div class="scramble-result-info">
-                                <div><strong>Case Name:</strong> ${escapeHtml(result.caseName)}</div>
-                                <div><strong>Path:</strong> ${escapeHtml(result.path)}</div>
-                                <div><strong>Input Top:</strong> ${escapeHtml(result.inputTop)}</div>
-                                <div><strong>Input Bottom:</strong> ${escapeHtml(result.inputBottom)}</div>
-                                <div><strong>Algorithm:</strong> ${escapeHtml(result.alg || 'Not set')}</div>
+                                <div class="run-field"><strong>Case Name:</strong><span>${escapeHtml(result.caseName)}</span></div>
+                                <div class="run-field"><strong>Path:</strong><span>${escapeHtml(result.path)}</span></div>
+                                <div class="run-field run-field-scramble"><strong>Scramble:</strong><span>${escapeHtml(result.scramble)}</span></div>
+                                <div class="run-field"><strong>Post-ABF:</strong><span>${escapeHtml(result.postAbf)}</span></div>
+                                <div class="run-field"><strong>Pre-ABF:</strong><span>${escapeHtml(result.preAbf)}</span></div>
+                                <div class="run-field"><strong>Equator:</strong><span>${escapeHtml(result.equator)}</span></div>
                             </div>
+                            <div class="scramble-result-viz">${result.viz || '<div style="color:#888;">Visualization unavailable</div>'}</div>
                         </div>
                     `).join('')}</div>
                 </div>
@@ -572,14 +628,29 @@ class JSONCreator {
 
     handleClick(event) {
         const target = event.target;
+        const infoButton = target.closest('.info-btn');
+        if (infoButton && this.root?.contains(infoButton)) {
+            this.toggleInfoBox(infoButton);
+            return;
+        }
         const actionElement = target.closest('[data-action]');
         if (!actionElement || !this.root?.contains(actionElement)) {
+            if (target.id === 'jsonCreatorTree') {
+                this.state.selectedPath = '';
+                saveSelection(this.state.activeRoot, '');
+                this.update({ contextMenu: null });
+                return;
+            }
             if (this.state.contextMenu || this.state.modal?.type === 'root-selector') {
                 this.update({ contextMenu: null, modal: this.state.modal?.type === 'root-selector' ? null : this.state.modal });
             }
             return;
         }
+        if (actionElement.classList.contains('disabled')) return;
         const action = actionElement.dataset.action;
+        if (actionElement.closest('[data-context-menu]') && this.state.contextMenu?.type !== 'extra') {
+            return this.handleContextAction(action);
+        }
 
         if (action === 'modal-backdrop' && target === actionElement) return this.closeModal(true);
         if (action === 'select-tree-item') return this.selectPath(actionElement.dataset.path);
@@ -639,7 +710,6 @@ class JSONCreator {
         const row = event.target.closest('.json-creator-tree-item');
         if (row) {
             event.preventDefault();
-            this.selectPath(row.dataset.path, false);
             this.openContextMenu(event.clientX, event.clientY, 'item', row.dataset.path);
             return;
         }
@@ -660,6 +730,7 @@ class JSONCreator {
         const target = event.target;
         if (target.dataset.action === 'toggle-algorithm-mode') return this.toggleAlgorithmInputMode(target.checked);
         if (target.dataset.action === 'algorithm-notation') return this.setAlgorithmNotationType(target.value);
+        if (target.dataset.action === 'parity-mode') return this.updateParityMode(target.dataset.prefix, target.value);
         if (target.matches('input[type="checkbox"][data-field]')) {
             const value = target.dataset.valueType === 'number' ? Number(target.dataset.value) : target.dataset.value;
             return this.updateArrayField(target.dataset.prefix, target.dataset.field, value, target.checked);
@@ -711,7 +782,13 @@ class JSONCreator {
         if (!node) return;
         this.state.selectedPath = path;
         saveSelection(this.state.activeRoot, path);
-        if (isCase(node)) this.state.editor = { type: 'case', tab: 'shape' };
+        if (isCase(node)) {
+            this.state.editorPath = path;
+            this.state.editor = { type: 'case', tab: 'shape' };
+        } else if (isFolder(node)) {
+            if (this.state.expandedFolders.has(path)) this.state.expandedFolders.delete(path);
+            else this.state.expandedFolders.add(path);
+        }
         if (shouldRender) this.render();
     }
 
@@ -722,8 +799,8 @@ class JSONCreator {
         this.render();
     }
 
-    newCase() {
-        const target = getTargetFolder(this.state.tree, this.state.selectedPath);
+    newCase(basePath = this.state.selectedPath) {
+        const target = getTargetFolder(this.state.tree, basePath);
         const name = getUniqueName(target.folder, 'New Case');
         target.folder[name] = createCaseFromTemplate(name, this.state.caseTemplate);
         if (target.path) this.state.expandedFolders.add(target.path);
@@ -733,8 +810,8 @@ class JSONCreator {
         this.openRename(`Rename ${name}`, name, (newName) => this.renamePath(this.state.selectedPath, newName));
     }
 
-    newFolder() {
-        const target = getTargetFolder(this.state.tree, this.state.selectedPath);
+    newFolder(basePath = this.state.selectedPath) {
+        const target = getTargetFolder(this.state.tree, basePath);
         const name = getUniqueName(target.folder, 'New Folder');
         target.folder[name] = {};
         if (target.path) this.state.expandedFolders.add(target.path);
@@ -757,22 +834,25 @@ class JSONCreator {
         delete info.parent[info.key];
         info.parent[trimmed] = item;
         if (isCase(item)) item.caseName = trimmed;
-        this.state.selectedPath = childPath(info.parentPath, trimmed);
+        const previousPath = path;
+        const renamedPath = childPath(info.parentPath, trimmed);
+        this.state.selectedPath = this.replacePathPrefix(this.state.selectedPath, previousPath, renamedPath);
+        this.state.editorPath = this.replacePathPrefix(this.state.editorPath, previousPath, renamedPath);
         saveSelection(this.state.activeRoot, this.state.selectedPath);
         this.persistRoot();
         this.closeModal(false);
     }
 
-    copy() {
-        const item = getNode(this.state.tree, this.state.selectedPath);
+    copy(path = this.state.selectedPath) {
+        const item = getNode(this.state.tree, path);
         if (!item) return showFloatingMessage('Nothing selected', 'info');
-        this.state.clipboard = { item: clone(item), name: this.state.selectedPath.split('/').pop() };
+        this.state.clipboard = { item: clone(item), name: path.split('/').pop() };
         showFloatingMessage('Copied', 'success');
     }
 
-    paste() {
+    paste(basePath = this.state.selectedPath) {
         if (!this.state.clipboard) return showFloatingMessage('Clipboard is empty', 'info');
-        const target = getTargetFolder(this.state.tree, this.state.selectedPath);
+        const target = getTargetFolder(this.state.tree, basePath);
         const name = getUniqueName(target.folder, this.state.clipboard.name || 'Pasted Item');
         target.folder[name] = clone(this.state.clipboard.item);
         if (isCase(target.folder[name])) target.folder[name].caseName = name;
@@ -781,15 +861,39 @@ class JSONCreator {
         this.render();
     }
 
-    deleteSelected() {
-        if (!this.state.selectedPath) return showFloatingMessage('Nothing selected', 'info');
-        const name = this.state.selectedPath.split('/').pop();
+    moveSelected(direction, path = this.state.selectedPath) {
+        if (!path) return;
+        const info = getParent(this.state.tree, path);
+        if (!info) return;
+        const entries = Object.entries(info.parent);
+        const index = entries.findIndex(([key]) => key === info.key);
+        const nextIndex = index + direction;
+        if (index < 0 || nextIndex < 0 || nextIndex >= entries.length) {
+            showFloatingMessage('Cannot move item beyond list boundaries', 'info');
+            return;
+        }
+        [entries[index], entries[nextIndex]] = [entries[nextIndex], entries[index]];
+        for (const key of Object.keys(info.parent)) delete info.parent[key];
+        for (const [key, value] of entries) info.parent[key] = value;
+        this.persistRoot();
+        this.render();
+    }
+
+    deleteSelected(path = this.state.selectedPath) {
+        if (!path) return showFloatingMessage('Nothing selected', 'info');
+        const name = path.split('/').pop();
         this.openConfirm('Delete Item', `Delete "${name}"? This cannot be undone.`, () => {
-            const info = getParent(this.state.tree, this.state.selectedPath);
+            const info = getParent(this.state.tree, path);
             if (!info) return;
             delete info.parent[info.key];
-            this.state.selectedPath = '';
-            this.state.editor = { type: 'welcome', tab: 'shape' };
+            if (this.state.selectedPath === path || this.state.selectedPath.startsWith(`${path}/`)) {
+                this.state.selectedPath = '';
+                saveSelection(this.state.activeRoot, '');
+            }
+            if (this.state.editorPath === path || this.state.editorPath.startsWith(`${path}/`)) {
+                this.state.editorPath = '';
+                this.state.editor = { type: 'welcome', tab: 'shape' };
+            }
             this.persistRoot();
             this.closeModal(false);
         });
@@ -827,29 +931,83 @@ class JSONCreator {
             return [
                 { label: 'New Case', action: 'new-case' },
                 { label: 'New Folder', action: 'new-folder' },
+                { label: 'Bulk Import', action: 'open-bulk-import' },
+                { separator: true },
                 { label: 'Paste', action: 'paste', disabled: !this.state.clipboard }
             ];
         }
         const item = getNode(this.state.tree, menu.path);
+        const folderItems = isFolder(item)
+            ? [
+                { label: 'New Case', action: 'new-case' },
+                { label: 'New Folder', action: 'new-folder' },
+                { label: 'Bulk Import', action: 'open-bulk-import' },
+                { separator: true }
+            ]
+            : [];
         return [
+            ...folderItems,
             { label: 'Rename', action: 'rename-selected' },
+            { label: 'Run', action: 'run-context' },
+            { label: 'Set as Template', action: 'set-as-template', disabled: !isCase(item) },
+            { separator: true },
             { label: 'Copy', action: 'copy' },
             { label: 'Paste', action: 'paste', disabled: !this.state.clipboard },
-            { label: 'Delete', action: 'delete' },
+            { label: 'Copy JSON to Clipboard', action: 'copy-item-json' },
+            { label: 'Move Up', action: 'move-up' },
+            { label: 'Move Down', action: 'move-down' },
             { separator: true },
-            { label: 'Set as Template', action: 'set-as-template', disabled: !isCase(item) },
-            { label: 'Copy Item JSON', action: 'copy-item-json' }
+            { label: 'Delete', action: 'delete' }
         ];
     }
 
     handleContextAction(action) {
         const menu = this.state.contextMenu;
         if (!menu) return;
+        if (action === 'new-case') return this.newCase(menu.path);
+        if (action === 'new-folder') return this.newFolder(menu.path);
+        if (action === 'open-bulk-import') return this.update({ modal: { type: 'bulk-import', targetPath: menu.path }, contextMenu: null });
         if (action === 'rename-selected') {
-            const name = this.state.selectedPath.split('/').pop();
-            return this.openRename(`Rename ${name}`, name, (newName) => this.renamePath(this.state.selectedPath, newName));
+            const name = menu.path.split('/').pop();
+            return this.openRename(`Rename ${name}`, name, (newName) => this.renamePath(menu.path, newName));
         }
-        if (action === 'copy-item-json') return this.copyItemJSON();
+        if (action === 'run-context') return this.runPath(menu.path);
+        if (action === 'set-as-template') return this.setSelectedAsTemplate(menu.path);
+        if (action === 'copy') {
+            this.copy(menu.path);
+            return this.update({ contextMenu: null });
+        }
+        if (action === 'paste') {
+            this.paste(menu.path);
+            return;
+        }
+        if (action === 'move-up') return this.moveSelected(-1, menu.path);
+        if (action === 'move-down') return this.moveSelected(1, menu.path);
+        if (action === 'copy-item-json') return this.copyItemJSON(menu.path);
+        if (action === 'delete') return this.deleteSelected(menu.path);
+    }
+
+    getEditorCase() {
+        return getNode(this.state.tree, this.state.editorPath);
+    }
+
+    replacePathPrefix(path, previousPath, nextPath) {
+        if (!path) return '';
+        if (path === previousPath) return nextPath;
+        if (previousPath && path.startsWith(`${previousPath}/`)) return `${nextPath}${path.slice(previousPath.length)}`;
+        return path;
+    }
+
+    toggleInfoBox(button) {
+        const box = button.parentElement?.querySelector('.info-box');
+        if (!box) return;
+        const visible = box.classList.contains('show');
+        this.root?.querySelectorAll('.info-box.show').forEach((openBox) => openBox.classList.remove('show'));
+        if (visible) return;
+        const rect = button.getBoundingClientRect();
+        box.style.left = `${Math.min(rect.left, window.innerWidth - 320)}px`;
+        box.style.top = `${rect.bottom + 8}px`;
+        box.classList.add('show');
     }
 
     switchRoot(rootName) {
@@ -860,6 +1018,7 @@ class JSONCreator {
         this.state.tree = clone(AppState.developingJSONs[rootName]);
         this.state.caseTemplate = loadTemplate(rootName);
         this.state.selectedPath = '';
+        this.state.editorPath = '';
         this.state.editor = { type: 'welcome', tab: 'shape' };
         this.state.expandedFolders = new Set(collectFolders(this.state.tree).map((folder) => folder.path));
         this.state.modal = null;
@@ -921,8 +1080,8 @@ class JSONCreator {
         });
     }
 
-    setSelectedAsTemplate() {
-        const item = getNode(this.state.tree, this.state.selectedPath);
+    setSelectedAsTemplate(path = this.state.selectedPath) {
+        const item = getNode(this.state.tree, path);
         if (!isCase(item)) return;
         this.openConfirm('Set as Template', 'Do you want to override your current template?', () => {
             const template = clone(item);
@@ -956,14 +1115,14 @@ class JSONCreator {
     }
 
     updateCurrentField(field, value) {
-        const item = getNode(this.state.tree, this.state.selectedPath);
+        const item = this.getEditorCase();
         if (!isCase(item)) return;
         item[field] = value;
         this.persistRoot();
     }
 
     updateArrayField(prefix, field, value, checked) {
-        const target = prefix === 'template' ? this.state.templateDraft : getNode(this.state.tree, this.state.selectedPath);
+        const target = prefix === 'template' ? this.state.templateDraft : this.getEditorCase();
         if (!target) return;
         if (!Array.isArray(target[field])) target[field] = [];
         if (checked && !target[field].includes(value)) target[field].push(value);
@@ -971,11 +1130,21 @@ class JSONCreator {
         if (prefix !== 'template') this.persistRoot();
     }
 
+    updateParityMode(prefix, mode) {
+        const target = prefix === 'template' ? this.state.templateDraft : this.getEditorCase();
+        if (!target) return;
+        if (mode === 'ignore') target.parity = [];
+        else if (mode === 'overall') target.parity = ['on'];
+        else target.parity = ['tnbn'];
+        if (prefix !== 'template') this.persistRoot();
+        this.render();
+    }
+
     addConstraint(prefix) {
         const position = this.root?.querySelector('#constraintPosition')?.value.trim();
         const values = this.root?.querySelector('#constraintValues')?.value.split(',').map((value) => value.trim()).filter(Boolean) || [];
         if (!position || !values.length) return showFloatingMessage('Please enter both position and values', 'error');
-        const target = prefix === 'template' ? this.state.templateDraft : getNode(this.state.tree, this.state.selectedPath);
+        const target = prefix === 'template' ? this.state.templateDraft : this.getEditorCase();
         if (!target) return;
         target.constraints = target.constraints || {};
         target.constraints[position] = values;
@@ -992,38 +1161,12 @@ class JSONCreator {
     }
 
     getEditingTarget() {
-        return this.state.editor.type === 'template' ? this.state.templateDraft : getNode(this.state.tree, this.state.selectedPath);
+        return this.state.editor.type === 'template' ? this.state.templateDraft : this.getEditorCase();
     }
 
-    async handleAlgorithmInput(text) {
+    handleAlgorithmInput(text) {
         this.state.algorithm.text = text;
-        if (!text.trim()) {
-            this.state.algorithm.tempHex = null;
-            this.render();
-            return;
-        }
-        try {
-            await ensureFeatureModules();
-            let processed = text.trim();
-            if (this.state.algorithm.notation === 'karnotation' && typeof window.makeAPBLDocScrambleWCANotationPlease === 'function') {
-                processed = window.makeAPBLDocScrambleWCANotationPlease(processed);
-            }
-            if (typeof window.ScrambleNormalizer !== 'undefined') processed = window.ScrambleNormalizer.normalize(processed);
-            if (typeof window.pleaseInvertThisScrambleForSolutionVisualization === 'function') {
-                processed = window.pleaseInvertThisScrambleForSolutionVisualization(processed);
-            }
-            if (typeof window.sq1AlgToHex !== 'function') throw new Error('Algorithm converter is not loaded');
-            const hex = window.sq1AlgToHex(processed);
-            this.state.algorithm.tempHex = hex;
-            const target = this.getEditingTarget();
-            if (target) {
-                target.inputTop = hex.tlHex || target.inputTop;
-                target.inputBottom = hex.blHex || target.inputBottom;
-            }
-            this.render();
-        } catch (error) {
-            showFloatingMessage(`Invalid algorithm: ${error.message}`, 'error');
-        }
+        this.state.algorithm.tempHex = null;
     }
 
     toggleAlgorithmInputMode(enabled) {
@@ -1039,14 +1182,20 @@ class JSONCreator {
     setAlgorithmNotationType(type) {
         this.state.algorithm.notation = type || 'normal';
         saveAlgorithmNotationType(this.state.algorithm.notation);
-        if (this.state.algorithm.text) void this.handleAlgorithmInput(this.state.algorithm.text);
-        else this.render();
+        this.render();
     }
 
     applyAlgorithmInput() {
         const target = this.getEditingTarget();
-        const hex = this.state.algorithm.tempHex;
-        if (!target || !hex) return showFloatingMessage('No algorithm to apply', 'error');
+        if (!target) return showFloatingMessage('No case is open', 'error');
+        if (!this.state.algorithm.text.trim()) return showFloatingMessage('No algorithm to apply', 'error');
+        let hex;
+        try {
+            hex = normalizeAlgorithmInput(this.state.algorithm.text, 'inverse');
+        } catch (error) {
+            showFloatingMessage(`Invalid algorithm: ${error.message}`, 'error');
+            return;
+        }
         target.inputTop = hex.tlHex || target.inputTop;
         target.inputBottom = hex.blHex || target.inputBottom;
         this.state.algorithm.lastApplied = this.state.algorithm.text;
@@ -1058,7 +1207,7 @@ class JSONCreator {
     }
 
     copyAlgorithmToField() {
-        const item = getNode(this.state.tree, this.state.selectedPath);
+        const item = this.getEditorCase();
         if (!isCase(item) || !this.state.algorithm.lastApplied) return;
         item.alg = this.state.algorithm.lastApplied;
         this.state.algorithm.lastApplied = '';
@@ -1074,6 +1223,7 @@ class JSONCreator {
         if (!window.InteractiveScrambleRenderer) return;
         const target = this.getEditingTarget();
         if (!target) return;
+        const colorScheme = this.getInteractiveColorScheme();
         for (const layer of ['top', 'bottom']) {
             const container = this.root.querySelector(`#${layer}Interactive`);
             if (!container) continue;
@@ -1090,14 +1240,40 @@ class JSONCreator {
                 const state = new window.InteractiveScrambleRenderer.InteractiveScrambleState(
                     layer === 'top' ? value : '',
                     layer === 'bottom' ? value : '',
-                    window.InteractiveScrambleRenderer.DEFAULT_COLOR_SCHEME
+                    colorScheme
                 );
+                state.onChange((nextState) => {
+                    const field = layer === 'top' ? 'inputTop' : 'inputBottom';
+                    const nextValue = nextState.getText(layer);
+                    if (!nextValue || nextValue.length !== 12) return;
+                    target[field] = nextValue;
+                    this.state.algorithm.text = '';
+                    this.state.algorithm.tempHex = null;
+                    const input = this.root?.querySelector(`#${layer}LayerInput`);
+                    if (input) input.value = nextValue;
+                    if (this.state.editor.type === 'case') this.persistRoot();
+                });
                 container.innerHTML = window.InteractiveScrambleRenderer.createInteractiveSVG(state, { size: 200 });
                 window.InteractiveScrambleRenderer.setupInteractiveEvents(state, `${layer}Interactive`);
             } catch {
                 container.innerHTML = `<div style="padding:40px;color:var(--devtool-muted,#777);">Invalid layer input</div>`;
             }
         }
+    }
+
+    getInteractiveColorScheme() {
+        const base = window.InteractiveScrambleRenderer.DEFAULT_COLOR_SCHEME;
+        if (AppState.settings.theme !== 'dark') return base;
+        return {
+            ...base,
+            placeholderWhiteEdge: '#d8ecffff',
+            placeholderWhiteCorner: '#d8ecffff',
+            placeholderEdge: '#6687a8',
+            placeholderCorner: '#6687a8',
+            emptyFill: '#071321ff',
+            emptyStroke: '#244b70',
+            ringStroke: '#183653'
+        };
     }
 
     async processFileImport(mode) {
@@ -1140,11 +1316,9 @@ class JSONCreator {
     async processBulkImport() {
         const file = this.root?.querySelector('#bulkImportFile')?.files?.[0];
         if (!file) return showFloatingMessage('Please select a CSV or XLSX file', 'error');
-        const notation = this.root?.querySelector('input[name="bulkImportNotation"]:checked')?.value || 'normal';
         try {
             const rows = await this.readRows(file);
-            await ensureFeatureModules();
-            const target = getTargetFolder(this.state.tree, this.state.selectedPath);
+            const target = getTargetFolder(this.state.tree, this.state.modal?.targetPath ?? this.state.selectedPath);
             let success = 0;
             let failed = 0;
             for (const row of rows) {
@@ -1155,22 +1329,12 @@ class JSONCreator {
                     continue;
                 }
                 try {
-                    let processed = algorithm;
-                    if (notation === 'karnotation' && typeof window.makeAPBLDocScrambleWCANotationPlease === 'function') {
-                        processed = window.makeAPBLDocScrambleWCANotationPlease(processed);
-                    }
-                    if (typeof window.ScrambleNormalizer !== 'undefined') processed = window.ScrambleNormalizer.normalize(processed);
-                    if (typeof window.pleaseInvertThisScrambleForSolutionVisualization === 'function') {
-                        processed = window.pleaseInvertThisScrambleForSolutionVisualization(processed);
-                    }
-                    const hex = typeof window.sq1AlgToHex === 'function' ? window.sq1AlgToHex(processed) : null;
+                    const hex = normalizeAlgorithmInput(algorithm, 'inverse');
                     const finalName = getUniqueName(target.folder, caseName);
                     target.folder[finalName] = createCaseFromTemplate(finalName, this.state.caseTemplate);
                     target.folder[finalName].alg = algorithm;
-                    if (hex) {
-                        target.folder[finalName].inputTop = hex.tlHex;
-                        target.folder[finalName].inputBottom = hex.blHex;
-                    }
+                    target.folder[finalName].inputTop = hex.tlHex;
+                    target.folder[finalName].inputBottom = hex.blHex;
                     success += 1;
                 } catch (error) {
                     failed += 1;
@@ -1203,6 +1367,7 @@ class JSONCreator {
         this.openConfirm('Reset Root', `Reset root "${this.state.activeRoot}"? This cannot be undone.`, () => {
             this.state.tree = {};
             this.state.selectedPath = '';
+            this.state.editorPath = '';
             this.state.editor = { type: 'welcome', tab: 'shape' };
             this.state.expandedFolders.clear();
             this.state.caseTemplate = null;
@@ -1221,6 +1386,7 @@ class JSONCreator {
             this.state.activeRoot = 'default';
             this.state.tree = clone(AppState.developingJSONs.default);
             this.state.selectedPath = '';
+            this.state.editorPath = '';
             this.state.editor = { type: 'welcome', tab: 'shape' };
             this.state.expandedFolders = new Set(collectFolders(this.state.tree).map((folder) => folder.path));
             this.state.caseTemplate = null;
@@ -1235,9 +1401,15 @@ class JSONCreator {
     }
 
     runSelectedCase() {
-        const item = getNode(this.state.tree, this.state.selectedPath);
-        if (!isCase(item)) return;
-        this.openRunModal({ [item.caseName]: item }, item.caseName);
+        this.runPath(this.state.editorPath);
+    }
+
+    runPath(path) {
+        const item = getNode(this.state.tree, path);
+        const name = path ? path.split('/').pop() : this.state.activeRoot;
+        if (!item) return;
+        if (isCase(item)) this.openRunModal({ [item.caseName]: item }, item.caseName);
+        else this.openRunModal(item, name);
     }
 
     runJSON() {
@@ -1260,19 +1432,86 @@ class JSONCreator {
             this.render();
             return;
         }
+        const modules = await ensureFeatureModules();
+        const { generateHexState } = modules.hexState;
         for (let index = 0; index < RUN_COUNT; index += 1) {
             if (!this.state.run || this.state.run.stopped) break;
             const picked = run.cases[Math.floor(Math.random() * run.cases.length)];
-            run.results.push({
-                caseName: picked.item.caseName,
-                path: picked.labelPath,
-                inputTop: picked.item.inputTop,
-                inputBottom: picked.item.inputBottom,
-                alg: picked.item.alg
-            });
+            try {
+                const config = {
+                    topLayer: picked.item.inputTop,
+                    bottomLayer: picked.item.inputBottom,
+                    middleLayer: picked.item.equator || ['/'],
+                    RUL: picked.item.rul || [0],
+                    RDL: picked.item.rdl || [0],
+                    AUF: picked.item.auf || ['U0'],
+                    ADF: picked.item.adf || ['D0'],
+                    constraints: picked.item.constraints || {},
+                    parity: picked.item.parity || ['on']
+                };
+                const generated = generateHexState(config);
+                let scramble = 'Solver not loaded';
+                for (let attempt = 0; attempt < 10; attempt += 1) {
+                    try {
+                        if (typeof window.Square1Solver?.solve === 'function') {
+                            scramble = window.Square1Solver.solve(generated.hexState);
+                        }
+                        break;
+                    } catch (error) {
+                        const retry = error.message?.includes("Cannot read properties of undefined (reading 'shift')");
+                        if (!retry || attempt === 9) {
+                            scramble = `Error: ${error.message}`;
+                            break;
+                        }
+                        await new Promise((resolve) => setTimeout(resolve, 10));
+                    }
+                }
+
+                const [auf = 'U0', adf = 'D0'] = String(generated.abf || 'U0-D0').split('-');
+                const rblMatch = String(generated.rbl || '').match(/RUL:(-?\d+), RDL:(-?\d+)/);
+                const rul = rblMatch ? rblMatch[1] : '0';
+                const rdl = rblMatch ? rblMatch[2] : '0';
+                const viz = typeof window.Square1VisualizerLibraryWithSillyNames?.visualizeFromHexCodePlease === 'function'
+                    ? window.Square1VisualizerLibraryWithSillyNames.visualizeFromHexCodePlease(
+                        generated.hexState,
+                        150,
+                        {
+                            topColor: '#000000',
+                            bottomColor: '#FFFFFF',
+                            frontColor: '#CC0000',
+                            rightColor: '#00AA00',
+                            backColor: '#FF8C00',
+                            leftColor: '#0066CC',
+                            dividerColor: '#7a0000',
+                            circleColor: 'transparent'
+                        },
+                        5
+                    )
+                    : '';
+
+                run.results.push({
+                    caseName: picked.item.caseName,
+                    path: picked.labelPath,
+                    scramble,
+                    postAbf: `(${faceMoveToNumber(auf)},${faceMoveToNumber(adf)})`,
+                    preAbf: `(${rul},${rdl})`,
+                    equator: generated.equator,
+                    viz
+                });
+            } catch (error) {
+                run.results.push({
+                    caseName: picked.item.caseName,
+                    path: picked.labelPath,
+                    scramble: `Error: ${error.message}`,
+                    postAbf: '(-,-)',
+                    preAbf: '(-,-)',
+                    equator: '-',
+                    viz: ''
+                });
+            }
             run.progress = Math.round(((index + 1) / RUN_COUNT) * 100);
             this.render();
-            await new Promise((resolve) => setTimeout(resolve, 30));
+            await new Promise((resolve) => setTimeout(resolve, 50));
         }
         if (this.state.run) {
             this.state.run.done = true;
@@ -1316,8 +1555,8 @@ class JSONCreator {
         modal.onConfirm(value);
     }
 
-    copyItemJSON() {
-        const item = getNode(this.state.tree, this.state.selectedPath);
+    copyItemJSON(path = this.state.selectedPath) {
+        const item = getNode(this.state.tree, path);
         if (!item) return;
         void navigator.clipboard.writeText(JSON.stringify(item, null, 2))
             .then(() => showFloatingMessage('Item JSON copied', 'success'))
@@ -1326,7 +1565,7 @@ class JSONCreator {
     }
 
     close() {
-        this.openConfirm('Close squanx', 'Close squanx? All changes are auto-saved.', () => {
+        this.openConfirm('Close SquanX', 'Close SquanX? All changes are auto-saved.', () => {
             this.persistRoot();
             saveLastScreen('training');
             this.abortController?.abort();
