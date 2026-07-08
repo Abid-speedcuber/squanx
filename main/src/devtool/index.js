@@ -207,6 +207,7 @@ class JSONCreator {
     render() {
         if (!this.root) return;
         const runBodyScrollTop = this.root.querySelector('.run-modal-body')?.scrollTop ?? 0;
+        const treeScrollTop = this.root.querySelector('#jsonCreatorTree')?.scrollTop ?? 0;
         if (this.state.run && runBodyScrollTop) this.state.run.scrollTop = runBodyScrollTop;
         this.root.innerHTML = `
             ${this.renderTopbar()}
@@ -221,7 +222,7 @@ class JSONCreator {
             ${this.renderModal()}
             ${this.renderRunModal()}
         `;
-        this.afterRender({ runBodyScrollTop });
+        this.afterRender({ runBodyScrollTop, treeScrollTop });
     }
 
     renderTopbar() {
@@ -698,6 +699,8 @@ class JSONCreator {
                 if (this.state.run) this.state.run.scrollTop = runBody.scrollTop;
             });
         }
+        const tree = this.root?.querySelector('#jsonCreatorTree');
+        if (tree) tree.scrollTop = options.treeScrollTop ?? 0;
         this.positionContextMenu();
         this.renderShapeVisuals();
     }
@@ -896,7 +899,8 @@ class JSONCreator {
             this.copy();
         } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !editingText) {
             event.preventDefault();
-            this.paste();
+            if (this.state.clipboard) this.paste();
+            else void this.pasteSystemClipboard();
         } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'n') {
             event.preventDefault();
             if (event.shiftKey) this.newFolder();
@@ -1051,6 +1055,41 @@ class JSONCreator {
         this.render();
     }
 
+    async pasteSystemClipboard(basePath = this.state.selectedPath) {
+        let text = '';
+        try {
+            text = await navigator.clipboard.readText();
+        } catch (error) {
+            showFloatingMessage(`System clipboard unavailable: ${error.message}`, 'error');
+            return;
+        }
+        if (!text.trim()) return showFloatingMessage('System clipboard is empty', 'info');
+        try {
+            this.importClipboardJSON(JSON.parse(text), basePath);
+            showFloatingMessage('JSON pasted from system clipboard', 'success');
+        } catch (error) {
+            showFloatingMessage(`Clipboard JSON failed: ${error.message}`, 'error');
+        }
+    }
+
+    importClipboardJSON(data, basePath = this.state.selectedPath) {
+        const target = getTargetFolder(this.state.tree, basePath);
+        if (isCase(data)) {
+            const name = getUniqueName(target.folder, data.caseName || 'Pasted Case');
+            target.folder[name] = clone(data);
+            target.folder[name].caseName = name;
+            this.persistRoot();
+            this.selectPath(childPath(target.path, name), false);
+            this.render();
+            return;
+        }
+        if (!isFolder(data)) throw new Error('Clipboard JSON must be a case or folder tree');
+        deepMergeTree(target.folder, data);
+        if (target.path) this.state.expandedFolders.add(target.path);
+        this.persistRoot();
+        this.render();
+    }
+
     moveSelected(direction, path = this.state.selectedPath) {
         if (!path) return;
         const info = getParent(this.state.tree, path);
@@ -1100,10 +1139,11 @@ class JSONCreator {
 
     removeNewItemFromRename(path) {
         const info = getParent(this.state.tree, path);
+        const parentPath = info?.parentPath || '';
         if (info) delete info.parent[info.key];
         if (this.state.selectedPath === path || isPathWithin(this.state.selectedPath, path)) {
-            this.state.selectedPath = '';
-            saveSelection(this.state.activeRoot, '');
+            this.state.selectedPath = parentPath;
+            saveSelection(this.state.activeRoot, parentPath);
         }
         if (this.state.editorPath === path || isPathWithin(this.state.editorPath, path)) {
             this.state.editorPath = '';
