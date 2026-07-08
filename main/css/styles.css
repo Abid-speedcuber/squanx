@@ -198,6 +198,26 @@ body.theme-light .squango-go {
     text-overflow: ellipsis;
 }
 
+.algset-select-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.algset-select-btn span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.algset-select-arrow {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 0.82em;
+    line-height: 1;
+}
+
 .case-count {
     color: var(--text-muted);
     font-size: 0.85rem;
@@ -344,6 +364,7 @@ body.theme-light .squango-go {
 
 .bar-scramble {
     width: 100%;
+    display: block;
     text-align: center;
     font-size: 1.6rem;
     line-height: 1.35;
@@ -353,6 +374,7 @@ body.theme-light .squango-go {
     border: 0;
     padding: 0.3rem 2.8rem;
     overflow-wrap: anywhere;
+    cursor: default;
 }
 
 .bar-scramble.generating {
@@ -630,6 +652,40 @@ body.theme-light .cue-input {
 .algset-import-footer {
     padding-top: 14px;
     border-top: 1px solid var(--divider-soft);
+    display: flex;
+    justify-content: center;
+}
+
+.algset-context-menu {
+    position: fixed;
+    z-index: 100002;
+    min-width: 160px;
+    padding: 6px;
+    background: var(--panel-bg);
+    border: 1px solid var(--divider-strong);
+    border-radius: 8px;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+}
+
+.algset-context-item {
+    width: 100%;
+    display: block;
+    padding: 8px 10px;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    color: var(--text-main);
+    font-weight: 700;
+}
+
+.algset-context-item:hover:not(:disabled) {
+    background: var(--case-hover-bg);
+}
+
+.algset-context-item:disabled {
+    color: var(--text-muted);
+    opacity: 0.5;
 }
 
 .empty-state {
@@ -741,6 +797,16 @@ textarea.settings-input {
     font-size: 0.95rem;
     max-height: calc(100vh - 150px);
     overflow-y: auto;
+}
+
+.case-tree-measure {
+    position: fixed;
+    left: -10000px;
+    top: 0;
+    visibility: hidden;
+    pointer-events: none;
+    max-height: none;
+    overflow: visible;
 }
 
 .tree-node {
@@ -865,9 +931,9 @@ textarea.settings-input {
     left: 50%;
     transform: translateX(-50%);
     z-index: 100000;
-    background: #0d2233;
-    border: 1px solid rgba(113, 216, 252, 0.8);
-    color: #bdefff;
+    background: var(--panel-bg);
+    border: 1px solid var(--border-col);
+    color: var(--text-strong);
     padding: 12px 22px;
     border-radius: 12px;
     font-weight: 800;
@@ -876,14 +942,19 @@ textarea.settings-input {
 }
 
 .floating-message.error {
-    background: #280912;
-    border-color: rgba(252, 113, 113, 0.8);
-    color: #ffb3b3;
+    background: var(--panel-bg);
+    border-color: var(--danger);
+    color: var(--danger);
 }
 
 .floating-message.success {
-    color: #bdf7d0;
-    border-color: rgba(113, 252, 150, 0.75);
+    color: var(--success);
+    border-color: var(--success);
+}
+
+.floating-message.info {
+    color: var(--text-soft);
+    border-color: var(--divider-strong);
 }
 
 @keyframes toastIn {

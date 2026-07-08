@@ -47,15 +47,53 @@ function escapeHtml(value) {
 }
 
 function splitPath(path) {
-    return path ? String(path).split('/').filter(Boolean) : [];
+    if (!path) return [];
+    const value = String(path);
+    if (value.startsWith('[')) {
+        try {
+            const parts = JSON.parse(value);
+            if (Array.isArray(parts)) return parts.map(String).filter(Boolean);
+        } catch {
+            return [];
+        }
+    }
+    return value.split('/').filter(Boolean);
 }
 
 function joinPath(parts) {
-    return parts.filter(Boolean).join('/');
+    const cleanParts = parts.map(String).filter(Boolean);
+    return cleanParts.length ? JSON.stringify(cleanParts) : '';
 }
 
 function childPath(parentPath, childName) {
-    return parentPath ? `${parentPath}/${childName}` : childName;
+    return joinPath([...splitPath(parentPath), childName]);
+}
+
+function normalizePath(path) {
+    return joinPath(splitPath(path));
+}
+
+function getPathName(path) {
+    return splitPath(path).at(-1) || '';
+}
+
+function isPathWithin(path, parentPath) {
+    const parts = splitPath(path);
+    const parentParts = splitPath(parentPath);
+    return parentParts.length > 0
+        && parts.length > parentParts.length
+        && parentParts.every((part, index) => parts[index] === part);
+}
+
+function replacePathPrefix(path, previousPath, nextPath) {
+    if (!path) return '';
+    const parts = splitPath(path);
+    const previousParts = splitPath(previousPath);
+    if (!previousParts.length) return path;
+    const matches = previousParts.every((part, index) => parts[index] === part);
+    if (!matches) return path;
+    const nextParts = splitPath(nextPath);
+    return joinPath([...nextParts, ...parts.slice(previousParts.length)]);
 }
 
 function normalizeArray(value, fallback) {
@@ -224,14 +262,18 @@ export {
     findFirstCase,
     getNode,
     getParent,
+    getPathName,
     getTargetFolder,
     getUniqueName,
+    isPathWithin,
     isCase,
     isFolder,
     isObject,
     joinPath,
+    normalizePath,
     normalizeRoots,
     normalizeTree,
+    replacePathPrefix,
     sanitizeFilename,
     splitPath
 };

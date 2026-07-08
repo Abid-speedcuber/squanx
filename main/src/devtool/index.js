@@ -16,12 +16,16 @@ import {
     findFirstCase,
     getNode,
     getParent,
+    getPathName,
     getTargetFolder,
     getUniqueName,
+    isPathWithin,
     isCase,
     isFolder,
+    normalizePath,
     normalizeRoots,
     normalizeTree,
+    replacePathPrefix,
     sanitizeFilename
 } from './model.js';
 import {
@@ -166,11 +170,12 @@ class JSONCreator {
     restoreSelection() {
         const selection = loadSelection();
         if (selection.root === this.state.activeRoot && selection.path && getNode(this.state.tree, selection.path)) {
-            this.state.selectedPath = selection.path;
-            saveSelection(this.state.activeRoot, selection.path);
-            const selected = getNode(this.state.tree, selection.path);
+            const normalizedSelectionPath = normalizePath(selection.path);
+            this.state.selectedPath = normalizedSelectionPath;
+            saveSelection(this.state.activeRoot, normalizedSelectionPath);
+            const selected = getNode(this.state.tree, normalizedSelectionPath);
             if (isCase(selected)) {
-                this.state.editorPath = selection.path;
+                this.state.editorPath = normalizedSelectionPath;
                 this.state.editor = { type: 'case', tab: 'shape' };
             } else {
                 const firstCase = findFirstCase(this.state.tree);
@@ -287,7 +292,7 @@ class JSONCreator {
         let title = SQUANX_WORDMARK;
         let subtitle = 'Case Editor';
         if (this.state.editor.type === 'case' && isCase(selected)) {
-            const name = selected.caseName || this.state.editorPath.split('/').pop();
+            const name = selected.caseName || getPathName(this.state.editorPath);
             title = `Case: ${escapeHtml(name)} <button class="json-creator-icon-btn" data-action="run-case" title="Run This Case" style="margin-left:8px;display:inline-flex;vertical-align:middle;"><img src="viz/run.svg" width="14" height="14" alt=""></button><button class="json-creator-icon-btn" data-action="reset-case" title="Reset Case to Template" style="margin-left:4px;display:inline-flex;vertical-align:middle;"><img src="viz/reset.svg" width="14" height="14" alt=""></button>`;
             subtitle = '';
         } else if (this.state.editor.type === 'template') {
@@ -1017,7 +1022,7 @@ class JSONCreator {
     copy(path = this.state.selectedPath) {
         const item = getNode(this.state.tree, path);
         if (!item) return showFloatingMessage('Nothing selected', 'info');
-        this.state.clipboard = { item: clone(item), name: path.split('/').pop() };
+        this.state.clipboard = { item: clone(item), name: getPathName(path) };
         showFloatingMessage('Copied', 'success');
     }
 
@@ -1052,16 +1057,16 @@ class JSONCreator {
 
     deleteSelected(path = this.state.selectedPath) {
         if (!path) return showFloatingMessage('Nothing selected', 'info');
-        const name = path.split('/').pop();
+        const name = getPathName(path);
         this.openConfirm('Delete Item', `Delete "${name}"? This cannot be undone.`, () => {
             const info = getParent(this.state.tree, path);
             if (!info) return;
             delete info.parent[info.key];
-            if (this.state.selectedPath === path || this.state.selectedPath.startsWith(`${path}/`)) {
+            if (this.state.selectedPath === path || isPathWithin(this.state.selectedPath, path)) {
                 this.state.selectedPath = '';
                 saveSelection(this.state.activeRoot, '');
             }
-            if (this.state.editorPath === path || this.state.editorPath.startsWith(`${path}/`)) {
+            if (this.state.editorPath === path || isPathWithin(this.state.editorPath, path)) {
                 this.state.editorPath = '';
                 this.state.editor = { type: 'welcome', tab: 'shape' };
             }
@@ -1100,13 +1105,12 @@ class JSONCreator {
             ];
         }
         if (menu.type === 'root-item') {
-            const isLastRoot = Object.keys(AppState.developingJSONs).length <= 1;
             return [
                 { label: 'Rename', action: 'rename-root' },
                 { label: 'Export as JSON', action: 'export-root-json' },
                 { label: 'Reset', action: 'reset-root-item' },
                 { separator: true },
-                { label: isLastRoot ? 'Reset Default Root' : 'Delete', action: 'delete-root' }
+                { label: 'Delete', action: 'delete-root' }
             ];
         }
         if (menu.type === 'root') {
@@ -1191,10 +1195,7 @@ class JSONCreator {
     }
 
     replacePathPrefix(path, previousPath, nextPath) {
-        if (!path) return '';
-        if (path === previousPath) return nextPath;
-        if (previousPath && path.startsWith(`${previousPath}/`)) return `${nextPath}${path.slice(previousPath.length)}`;
-        return path;
+        return replacePathPrefix(path, previousPath, nextPath);
     }
 
     toggleInfoBox(button) {
@@ -1213,9 +1214,10 @@ class JSONCreator {
         this.root?.querySelectorAll('.info-box.show').forEach((openBox) => openBox.classList.remove('show'));
     }
 
-    switchRoot(rootName) {
+    switchRoot(rootName, options = {}) {
+        const { persistCurrent = true } = options;
         if (!rootName || !AppState.developingJSONs[rootName]) return;
-        this.persistRoot();
+        if (persistCurrent) this.persistRoot();
         AppState.activeDevelopingJSON = rootName;
         this.state.activeRoot = rootName;
         this.state.tree = clone(AppState.developingJSONs[rootName]);
@@ -1280,18 +1282,17 @@ class JSONCreator {
 
     deleteRoot(rootName) {
         if (!rootName || !AppState.developingJSONs[rootName]) return;
-        const roots = Object.keys(AppState.developingJSONs);
-        if (roots.length <= 1) {
-            this.resetRootName(rootName);
-            return;
-        }
         delete AppState.developingJSONs[rootName];
-        if (AppState.activeDevelopingJSON === rootName) {
+        clearTemplate(rootName);
+        if (!Object.keys(AppState.developingJSONs).length) {
+            AppState.developingJSONs.default = normalizeTree(DEFAULT_ALGSET);
+            AppState.activeDevelopingJSON = 'default';
+        } else if (AppState.activeDevelopingJSON === rootName) {
             AppState.activeDevelopingJSON = Object.keys(AppState.developingJSONs)[0];
         }
         saveDevelopingJSONs();
         this.state.contextMenu = null;
-        this.switchRoot(AppState.activeDevelopingJSON);
+        this.switchRoot(AppState.activeDevelopingJSON, { persistCurrent: false });
     }
 
     toggleTheme() {
@@ -1673,7 +1674,7 @@ class JSONCreator {
 
     runPath(path) {
         const item = getNode(this.state.tree, path);
-        const name = path ? path.split('/').pop() : this.state.activeRoot;
+        const name = path ? getPathName(path) : this.state.activeRoot;
         if (!item) return;
         if (isCase(item)) this.openRunModal({ [item.caseName]: item }, item.caseName);
         else this.openRunModal(item, name);

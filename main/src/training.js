@@ -109,6 +109,41 @@ const DEFAULT_ALGSET = {
     }
 };
 
+const DEFAULT_TRAINING_ALGSETS = [
+    { file: 'EOCP.json', name: 'EOCP', label: 'EOCP', author: 'Abid' }
+];
+
+const DEFAULT_ALGSET_BASE_PATH = './default-algset/';
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function cloneJSON(value) {
+    return JSON.parse(JSON.stringify(value));
+}
+
+async function fetchDefaultAlgsetData(name) {
+    const algset = DEFAULT_TRAINING_ALGSETS.find((item) => item.name === name);
+    if (!algset) return null;
+    const response = await fetch(`${DEFAULT_ALGSET_BASE_PATH}${algset.file}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+}
+
+async function ensureDefaultTrainingAlgset(name) {
+    if (AppState.trainingJSONs[name]) return AppState.trainingJSONs[name];
+    const data = await fetchDefaultAlgsetData(name);
+    if (!data) return null;
+    importTrainingJSONData(name, data, { activate: false, selectAll: true });
+    return AppState.trainingJSONs[name];
+}
+
 // Load training JSONs from localStorage
 function loadTrainingJSONs() {
     const saved = localStorage.getItem('sq1TrainingJSONs');
@@ -368,10 +403,11 @@ function railButton(action, icon, label) {
 // Render main app structure
 function renderApp() {
     const app = document.getElementById('app');
-    const currentScramble = AppState.currentScramble?.scramble || 'Scramble will show up here';
+    const currentScramble = escapeHtml(AppState.currentScramble?.scramble || 'Scramble will show up here');
     const previousScramble = AppState.previousScramble
-        ? `${AppState.previousScramble.scramble} (${AppState.previousScramble.caseName || 'Unknown case'})`
+        ? escapeHtml(`${AppState.previousScramble.scramble} (${AppState.previousScramble.caseName || 'Unknown case'})`)
         : 'Last scramble will show up here';
+    const activeAlgset = escapeHtml(AppState.activeTrainingJSON || 'Select Algset');
 
     app.innerHTML = `
         ${trainerIconSprite()}
@@ -380,7 +416,10 @@ function renderApp() {
                 <div class="nav-left">
                     <span class="squango" id="squango-home"><span class="squango-sq">Squan</span><span class="squango-go">Go</span></span>
                 </div>
-                <button class="nav-center" id="selectAlgsetBtn">${AppState.activeTrainingJSON || 'Select Algset'}</button>
+                <button class="nav-center algset-select-btn" id="selectAlgsetBtn" aria-haspopup="dialog">
+                    <span>${activeAlgset}</span>
+                    <span class="algset-select-arrow" aria-hidden="true">▾</span>
+                </button>
                 <div class="nav-spacer">
                     <span class="case-count" id="caseCount">${AppState.selectedCases.length} selected</span>
                 </div>
@@ -406,7 +445,7 @@ function renderApp() {
                 <div class="content">
                     <div class="top-bar">
                         <div class="scramble-row">
-                            <button class="bar-scramble" id="scrambleDisplay">${currentScramble}</button>
+                            <div class="bar-scramble" id="scrambleDisplay">${currentScramble}</div>
                         </div>
                         <div class="scramble-controls">
                             <button class="bar-btn" id="prevScrambleBtn" ${AppState.previousScramble ? '' : 'disabled'}>← Previous</button>
@@ -423,7 +462,7 @@ function renderApp() {
                     </div>
 
                     <div class="bottom-bar">
-                        <button class="bar-scramble previous-scramble" id="previousScrambleDisplay">${previousScramble}</button>
+                        <div class="bar-scramble previous-scramble" id="previousScrambleDisplay">${previousScramble}</div>
                     </div>
                 </div>
             </div>
@@ -439,29 +478,6 @@ function renderApp() {
         </div>
     `;
     setupEventListeners();
-}
-
-// Generate visualization from hex state
-function generateVisualization(hexState) {
-    if (typeof window.Square1VisualizerLibraryWithSillyNames !== 'undefined') {
-        const colors = {
-            topColor: '#000000',
-            bottomColor: '#FFFFFF',
-            frontColor: '#CC0000',
-            rightColor: '#00AA00',
-            backColor: '#FF8C00',
-            leftColor: '#0066CC',
-            dividerColor: '#7a0000',
-            circleColor: 'transparent'
-        };
-        return window.Square1VisualizerLibraryWithSillyNames.visualizeFromHexCodePlease(
-            hexState,
-            AppState.settings.visualizationSize,
-            colors,
-            5
-        );
-    }
-    return '<div style="color: #888;">Visualization unavailable</div>';
 }
 
 // Generate new scramble from selected cases
@@ -554,8 +570,6 @@ function setupEventListeners() {
     });
 
     document.getElementById('selectAlgsetBtn')?.addEventListener('click', openAlgsetSelectorModal);
-    document.getElementById('scrambleDisplay')?.addEventListener('click', openScrambleDetailModal);
-    document.getElementById('previousScrambleDisplay')?.addEventListener('click', openPreviousScrambleModal);
     document.getElementById('prevScrambleBtn')?.addEventListener('click', () => {
         if (AppState.scrambleHistory.length > 0) {
             AppState.currentScramble = AppState.scrambleHistory.pop();
@@ -991,21 +1005,15 @@ function renderAlgsetSelectorContent() {
     const content = document.getElementById('algsetContent');
     if (!content) return;
 
-    const defaultAlgsets = [
-        { file: 'eo.json', label: 'EO', author: 'SquanGo' },
-        { file: 'cp.json', label: 'CP', author: 'SquanGo' },
-        { file: 'ep.json', label: 'EP', author: 'SquanGo' },
-        { file: 'cubeshape.json', label: 'Cubeshape', author: 'jose_08' }
-    ];
     const importedAlgsets = Object.keys(AppState.trainingJSONs);
 
     content.innerHTML = `
         <section class="algset-section">
             <h3>Default</h3>
             <div class="algset-list">
-                ${defaultAlgsets.map(algset => `
-                    <div class="algset-item" onclick="selectDefaultAlgset('${algset.file}')">
-                        <span>${algset.label} <small>by ${algset.author}</small></span>
+                ${DEFAULT_TRAINING_ALGSETS.map(algset => `
+                    <div class="algset-item ${algset.name === AppState.activeTrainingJSON ? 'active' : ''}" onclick='selectDefaultAlgset(${JSON.stringify(algset.name)})' oncontextmenu='openAlgsetContextMenu(event, ${JSON.stringify(algset.name)}, "default")'>
+                        <span>${escapeHtml(algset.label)} <small>by ${escapeHtml(algset.author)}</small></span>
                     </div>
                 `).join('')}
             </div>
@@ -1016,30 +1024,161 @@ function renderAlgsetSelectorContent() {
                 ${importedAlgsets.length === 0 ?
                     '<p class="empty-state">No imported algsets</p>' :
                     importedAlgsets.map(name => `
-                        <div class="algset-item ${name === AppState.activeTrainingJSON ? 'active' : ''}" onclick="selectImportedAlgset('${name}')">
-                            <span>${name}</span>
-                            <button class="algset-remove-btn" onclick="event.stopPropagation(); removeAlgset('${name}')">×</button>
+                        <div class="algset-item ${name === AppState.activeTrainingJSON ? 'active' : ''}" onclick='selectImportedAlgset(${JSON.stringify(name)})' oncontextmenu='openAlgsetContextMenu(event, ${JSON.stringify(name)}, "imported")'>
+                            <span>${escapeHtml(name)}</span>
+                            <button class="algset-remove-btn" onclick='event.stopPropagation(); removeAlgset(${JSON.stringify(name)})'>×</button>
                         </div>
                     `).join('')
                 }
             </div>
         </section>
         <div class="algset-import-footer">
-            <button class="btn btn-primary" onclick="openImportAlgsetModal()">Import Algset</button>
+            <button class="btn btn-primary" onclick="openImportAlgsetModal()">Add new algset</button>
         </div>
     `;
 }
 
-window.selectDefaultAlgset = function(fileName) {
-    const name = fileName.replace('.json', '');
-    if (!AppState.trainingJSONs[name]) {
-        importTrainingJSONData(name, JSON.parse(JSON.stringify(DEFAULT_ALGSET)), { activate: false, selectAll: true });
+window.selectDefaultAlgset = async function(name) {
+    try {
+        await ensureDefaultTrainingAlgset(name);
+    } catch (error) {
+        console.error(`Could not load default algset ${name}:`, error);
+        showFloatingMessage(`Couldn't grab ${name} right now.`, 'info');
+        return;
     }
     activateTrainingJSON(name, { selectAllWhenMissing: true });
     document.querySelector('.modal')?.remove();
     renderApp();
     void generateNewScramble();
 };
+
+function closeAlgsetContextMenu() {
+    document.querySelector('.algset-context-menu')?.remove();
+}
+
+function getAlgsetContextItems(name, type) {
+    const items = [
+        { action: 'select', label: 'Select' }
+    ];
+    if (type !== 'default') {
+        const names = Object.keys(AppState.trainingJSONs);
+        const index = names.indexOf(name);
+        items.push(
+            { action: 'delete', label: 'Delete' },
+            { action: 'move-up', label: 'Move up', disabled: index <= 0 },
+            { action: 'move-down', label: 'Move down', disabled: index < 0 || index >= names.length - 1 }
+        );
+    }
+    items.push({ action: 'open-devtool', label: 'Open in devtool' });
+    return items;
+}
+
+window.openAlgsetContextMenu = function(event, name, type) {
+    event.preventDefault();
+    event.stopPropagation();
+    closeAlgsetContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'algset-context-menu';
+    menu.innerHTML = getAlgsetContextItems(name, type).map((item) => `
+        <button class="algset-context-item ${item.disabled ? 'disabled' : ''}" type="button" data-action="${item.action}" ${item.disabled ? 'disabled' : ''}>
+            ${escapeHtml(item.label)}
+        </button>
+    `).join('');
+    document.body.appendChild(menu);
+
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - rect.width - 8))}px`;
+    menu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - rect.height - 8))}px`;
+
+    menu.addEventListener('click', (clickEvent) => {
+        const item = clickEvent.target.closest('.algset-context-item');
+        if (!item || item.disabled) return;
+        closeAlgsetContextMenu();
+        void handleAlgsetContextAction(item.dataset.action, name, type);
+    });
+
+    setTimeout(() => {
+        document.addEventListener('click', closeAlgsetContextMenu, { once: true });
+        document.addEventListener('contextmenu', closeAlgsetContextMenu, { once: true });
+    }, 0);
+};
+
+async function getAlgsetDataForAction(name, type) {
+    if (type === 'default' && !AppState.trainingJSONs[name]) {
+        return fetchDefaultAlgsetData(name);
+    }
+    return AppState.trainingJSONs[name] || null;
+}
+
+async function handleAlgsetContextAction(action, name, type) {
+    if (action === 'select') {
+        if (type === 'default') await window.selectDefaultAlgset(name);
+        else window.selectImportedAlgset(name);
+        return;
+    }
+
+    if (type !== 'default' && action === 'delete') {
+        window.removeAlgset(name);
+        return;
+    }
+
+    if (type !== 'default' && action === 'move-up') {
+        moveImportedAlgset(name, -1);
+        return;
+    }
+
+    if (type !== 'default' && action === 'move-down') {
+        moveImportedAlgset(name, 1);
+        return;
+    }
+
+    if (action === 'open-devtool') {
+        await openAlgsetInDevtool(name, type);
+    }
+}
+
+function moveImportedAlgset(name, direction) {
+    const entries = Object.entries(AppState.trainingJSONs);
+    const index = entries.findIndex(([entryName]) => entryName === name);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= entries.length) return;
+    [entries[index], entries[nextIndex]] = [entries[nextIndex], entries[index]];
+    AppState.trainingJSONs = Object.fromEntries(entries);
+    saveTrainingJSONs();
+    renderAlgsetSelectorContent();
+}
+
+function getUniqueRootName(baseName) {
+    const fallback = String(baseName || 'default').trim() || 'default';
+    if (!AppState.developingJSONs[fallback]) return fallback;
+    let counter = 1;
+    let name = `${fallback} ${counter}`;
+    while (AppState.developingJSONs[name]) {
+        counter += 1;
+        name = `${fallback} ${counter}`;
+    }
+    return name;
+}
+
+async function openAlgsetInDevtool(name, type) {
+    let data;
+    try {
+        data = await getAlgsetDataForAction(name, type);
+    } catch (error) {
+        console.error(`Could not load algset ${name} for devtool:`, error);
+        showFloatingMessage(`Couldn't grab ${name} right now.`, 'info');
+        return;
+    }
+    if (!data) return;
+
+    const rootName = getUniqueRootName(name);
+    AppState.developingJSONs[rootName] = cloneJSON(data);
+    AppState.activeDevelopingJSON = rootName;
+    saveDevelopingJSONs();
+    document.querySelectorAll('.modal').forEach((modal) => modal.remove());
+    await openDevtoolFullscreen();
+}
 
 window.selectImportedAlgset = function(name) {
     activateTrainingJSON(name, { selectAllWhenMissing: true });
@@ -1174,12 +1313,16 @@ function openCaseSelectionModal() {
     `;
     document.body.appendChild(modal);
     renderCaseTree();
+    const resizeCaseModal = () => updateCaseSelectionModalHeight();
+    window.addEventListener('resize', resizeCaseModal);
 
     modal.addEventListener('click', (e) => {
         if (e.target === modal) {
+            window.removeEventListener('resize', resizeCaseModal);
             modal.remove();
         }
     });
+    modal.querySelector('.close-btn')?.addEventListener('click', () => window.removeEventListener('resize', resizeCaseModal), { once: true });
 }
 
 window.switchTrainingTab = function (name) {
@@ -1209,6 +1352,7 @@ function renderCaseTree() {
         saveCaseTreeExpandedState();
     }
     treeContainer.innerHTML = renderTreeNode(activeData, [], 0);
+    updateCaseSelectionModalHeight();
 }
 
 function getFolderPaths(node, path = []) {
@@ -1253,7 +1397,7 @@ function isPathSelected(path) {
     return AppState.selectedCases.some(c => c._path === path);
 }
 
-function renderTreeNode(node, path, depth = 0) {
+function renderTreeNode(node, path, depth = 0, options = {}) {
     let html = '';
 
     for (const [key, value] of Object.entries(node)) {
@@ -1280,7 +1424,7 @@ function renderTreeNode(node, path, depth = 0) {
             const allSelected = casePaths.length > 0 && casePaths.every(isPathSelected);
             const childColumns = getCaseGridColumns(value, depth + 1);
             const expandedPaths = AppState.caseTreeExpandedByAlgset[AppState.activeTrainingJSON] || [];
-            const isExpanded = expandedPaths.includes(pathString);
+            const isExpanded = options.forceExpanded || expandedPaths.includes(pathString);
             const folderWeight = Math.max(600, Math.round(900 - (1 - (1 / (depth + 1))) * 380));
             html += `
                         <div class="tree-node tree-node-folder" style="--tree-depth:${depth};">
@@ -1294,7 +1438,7 @@ function renderTreeNode(node, path, depth = 0) {
                                 <button class="tree-toggle" type="button" tabindex="-1">${isExpanded ? '▾' : '▸'}</button>
                             </div>
                             <div class="tree-children ${isExpanded ? 'expanded' : ''}" style="--case-columns:${childColumns};">
-                                ${renderTreeNode(value, currentPath, depth + 1)}
+                                ${renderTreeNode(value, currentPath, depth + 1, options)}
                             </div>
                         </div>
                     `;
@@ -1302,6 +1446,38 @@ function renderTreeNode(node, path, depth = 0) {
     }
 
     return html;
+}
+
+function updateCaseSelectionModalHeight() {
+    const modalContent = document.querySelector('.case-selection-content');
+    const treeContainer = document.getElementById('caseTree');
+    if (!modalContent || !treeContainer) return;
+    if (window.matchMedia('(max-width: 600px)').matches) {
+        modalContent.style.height = '';
+        return;
+    }
+
+    const activeData = AppState.trainingJSONs[AppState.activeTrainingJSON] || {};
+    const body = modalContent.querySelector('.modal-body');
+    const header = modalContent.querySelector('.modal-header');
+    if (!body || !header) return;
+
+    const measure = document.createElement('div');
+    measure.className = 'tree-view case-tree-measure';
+    measure.style.width = `${treeContainer.clientWidth}px`;
+    measure.innerHTML = renderTreeNode(activeData, [], 0, { forceExpanded: true });
+    document.body.appendChild(measure);
+
+    const bodyStyle = getComputedStyle(body);
+    const bodyBlockPadding = parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom);
+    const expandedHeight = measure.scrollHeight;
+    measure.remove();
+
+    const targetHeight = Math.min(
+        Math.ceil(header.offsetHeight + bodyBlockPadding + expandedHeight),
+        window.innerHeight - 28
+    );
+    modalContent.style.height = `${targetHeight}px`;
 }
 
 window.toggleTreeNode = function (path) {
@@ -1576,51 +1752,6 @@ window.removeTrainingJSON = function (name) {
     );
 };
 
-// Scramble detail modal
-function openScrambleDetailModal() {
-    if (!AppState.currentScramble || !AppState.currentScramble.hexState) return;
-
-    const modal = document.createElement('div');
-    modal.className = 'modal active';
-    modal.innerHTML = `
-                <div class="modal-content" style="max-width: 900px;">
-                    <div class="modal-header">
-                        <h2>Scramble Details</h2>
-                        <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
-                    </div>
-                    <div class="modal-body">
-                        <div style="margin-bottom: 20px;">
-                            <h3 style="color: var(--text-tertiary); font-size: 14px; margin-bottom: 8px;">Case Name</h3>
-                            <div style="color: var(--text-primary); font-size: 16px;">${AppState.currentScramble.caseName || 'Unknown Case'}</div>
-                        </div>
-                        <div style="margin-bottom: 20px;">
-                            <h3 style="color: var(--text-tertiary); font-size: 14px; margin-bottom: 8px;">Hex State</h3>
-                            <div style="color: var(--text-primary); font-family: monospace; font-size: 14px;">${AppState.currentScramble.hexState}</div>
-                        </div>
-                        <div style="margin-bottom: 20px;">
-                            <h3 style="color: var(--text-tertiary); font-size: 14px; margin-bottom: 12px;">Visualization</h3>
-                            <div style="display: flex; justify-content: center; background: var(--bg-primary); padding: 20px; border-radius: 8px; border: 1px solid var(--border-color);">
-                                ${generateVisualization(AppState.currentScramble.hexState)}
-                            </div>
-                        </div>
-                        <div style="margin-bottom: 20px;">
-                            <h3 style="color: var(--text-tertiary); font-size: 14px; margin-bottom: 8px;">Algorithm</h3>
-                            <div style="color: var(--text-primary); font-family: monospace; font-size: 14px; background: var(--bg-primary); padding: 12px; border-radius: 6px; border: 1px solid var(--border-color);">
-                                ${AppState.currentScramble.alg || 'No algorithm provided'}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-    document.body.appendChild(modal);
-
-    modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.remove();
-        }
-    });
-}
-
 function openHintModal() {
     const modal = document.createElement('div');
     modal.className = 'modal active';
@@ -1632,7 +1763,7 @@ function openHintModal() {
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
             <div class="modal-body hint-body">
-                ${current?.alg ? `<pre>${current.alg}</pre>` : '<p>No algorithm hint for this case.</p>'}
+                ${current?.alg ? `<pre>${escapeHtml(current.alg)}</pre>` : '<p>No algorithm hint for this case.</p>'}
             </div>
         </div>
     `;
@@ -1645,22 +1776,12 @@ function openHintModal() {
     });
 }
 
-function openPreviousScrambleModal() {
-    if (!AppState.previousScramble) return;
-
-    const originalCurrent = AppState.currentScramble;
-    AppState.currentScramble = AppState.previousScramble;
-    openScrambleDetailModal();
-    AppState.currentScramble = originalCurrent;
-}
-
 Object.assign(window, {
     initApp,
     openSettingsModal,
     openAboutModal,
     openHelpModal,
-    openHintModal,
-    openScrambleDetailModal
+    openHintModal
 });
 
 export {

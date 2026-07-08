@@ -25,6 +25,7 @@ await build({
 });
 
 await cp(path.join(sourceDir, 'viz'), path.join(publicDir, 'viz'), { recursive: true });
+await cp(path.join(sourceDir, 'default-algset'), path.join(publicDir, 'default-algset'), { recursive: true });
 await mkdir(path.join(publicDir, 'css'), { recursive: true });
 
 for (const fileName of ['styles.css', 'devtool.css']) {

@@ -1,0 +1,102 @@
+{
+  "New Folder": {
+    "New Case": {
+      "caseName": "New Case",
+      "inputTop": "RRRRRRRRRRRR",
+      "inputBottom": "RRRRRRRRRRRR",
+      "equator": [
+        "/",
+        "|"
+      ],
+      "parity": [],
+      "constraints": {},
+      "auf": [
+        "U0"
+      ],
+      "adf": [
+        "D0"
+      ],
+      "rul": [
+        0
+      ],
+      "rdl": [
+        0
+      ],
+      "alg": ""
+    },
+    "New Case 1": {
+      "caseName": "New Case 1",
+      "inputTop": "RRRRRRRRRRRR",
+      "inputBottom": "RRRRRRRRRRRR",
+      "equator": [
+        "/",
+        "|"
+      ],
+      "parity": [],
+      "constraints": {},
+      "auf": [
+        "U0"
+      ],
+      "adf": [
+        "D0"
+      ],
+      "rul": [
+        0
+      ],
+      "rdl": [
+        0
+      ],
+      "alg": ""
+    }
+  },
+  "New Folder 1": {
+    "New Case": {
+      "caseName": "New Case",
+      "inputTop": "RRRRRRRRRRRR",
+      "inputBottom": "RRRRRRRRRRRR",
+      "equator": [
+        "/",
+        "|"
+      ],
+      "parity": [],
+      "constraints": {},
+      "auf": [
+        "U0"
+      ],
+      "adf": [
+        "D0"
+      ],
+      "rul": [
+        0
+      ],
+      "rdl": [
+        0
+      ],
+      "alg": ""
+    },
+    "New Case 1": {
+      "caseName": "New Case 1",
+      "inputTop": "RRRRRRRRRRRR",
+      "inputBottom": "RRRRRRRRRRRR",
+      "equator": [
+        "/",
+        "|"
+      ],
+      "parity": [],
+      "constraints": {},
+      "auf": [
+        "U0"
+      ],
+      "adf": [
+        "D0"
+      ],
+      "rul": [
+        0
+      ],
+      "rdl": [
+        0
+      ],
+      "alg": ""
+    }
+  }
+}
