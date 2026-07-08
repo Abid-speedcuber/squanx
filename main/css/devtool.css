@@ -295,6 +295,8 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     z-index: 100010;
     min-width: 180px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .context-menu-item {
@@ -1295,6 +1297,8 @@ body.theme-dark .json-creator-fullscreen {
     border-radius: 2px !important;
     min-width: 180px;
     box-shadow: 0 8px 18px rgba(0,0,0,0.35) !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
 }
 
 .context-menu-item {

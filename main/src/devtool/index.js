@@ -114,6 +114,7 @@ class JSONCreator {
             editorPath: '',
             renamingPath: '',
             renamingValue: '',
+            newItemRenamePath: '',
             expandedFolders: new Set(),
             editor: { type: 'welcome', tab: 'shape' },
             clipboard: null,
@@ -490,7 +491,7 @@ class JSONCreator {
         if (!menu) return '';
         const items = this.getContextMenuItems(menu);
         return `
-            <div class="context-menu" data-context-menu style="left:${menu.x}px;top:${menu.y}px;">
+            <div class="context-menu" data-context-menu style="left:${menu.x}px;top:${menu.y}px;max-height:${menu.maxHeight || 'calc(100vh - 16px)'};">
                 ${items.map((item) => item.separator ? '<div class="context-menu-separator"></div>' : `<div class="context-menu-item ${item.disabled ? 'disabled' : ''}" data-action="${escapeHtml(item.action)}">${escapeHtml(item.label)}</div>`).join('')}
             </div>
         `;
@@ -697,6 +698,7 @@ class JSONCreator {
                 if (this.state.run) this.state.run.scrollTop = runBody.scrollTop;
             });
         }
+        this.positionContextMenu();
         this.renderShapeVisuals();
     }
 
@@ -800,14 +802,7 @@ class JSONCreator {
         const rootRow = event.target.closest('.root-list-item');
         if (rootRow) {
             event.preventDefault();
-            this.state.contextMenu = {
-                type: 'root-item',
-                path: '',
-                rootName: rootRow.dataset.root,
-                x: Math.max(10, Math.min(event.clientX, window.innerWidth - 210)),
-                y: Math.max(10, Math.min(event.clientY, window.innerHeight - 260))
-            };
-            this.render();
+            this.openContextMenu(event.clientX, event.clientY, 'root-item', '', { rootName: rootRow.dataset.root });
             return;
         }
         if (event.target.id === 'jsonCreatorTree') {
@@ -892,7 +887,10 @@ class JSONCreator {
 
     handleDocumentKeydown(event) {
         if (!this.root || !document.body.contains(this.root)) return;
-        const editingText = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName || '');
+        const activeElement = document.activeElement;
+        const editingText = ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName || '') || Boolean(activeElement?.isContentEditable);
+        const plainKey = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+        const shortcutsAvailable = !editingText && !this.state.modal && !this.state.contextMenu && !this.state.run;
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !editingText) {
             event.preventDefault();
             this.copy();
@@ -903,7 +901,16 @@ class JSONCreator {
             event.preventDefault();
             if (event.shiftKey) this.newFolder();
             else this.newCase();
-        } else if ((event.key === 'Delete' || event.key === 'Backspace') && !editingText) {
+        } else if (plainKey && shortcutsAvailable && event.key.toLowerCase() === 'n') {
+            event.preventDefault();
+            this.newFolder();
+        } else if (plainKey && shortcutsAvailable && event.key === '=') {
+            event.preventDefault();
+            this.newCase();
+        } else if (event.key === 'Delete' && shortcutsAvailable) {
+            event.preventDefault();
+            this.deleteEditorCase();
+        } else if (event.key === 'Backspace' && !editingText) {
             event.preventDefault();
             this.deleteSelected();
         } else if (event.key === 'Escape') {
@@ -953,7 +960,7 @@ class JSONCreator {
         const path = childPath(target.path, name);
         this.selectPath(path, false);
         this.render();
-        this.startInlineRename(path);
+        this.startInlineRename(path, { removeOnCancel: true });
     }
 
     newFolder(basePath = this.state.selectedPath) {
@@ -965,7 +972,7 @@ class JSONCreator {
         this.state.selectedPath = childPath(target.path, name);
         saveSelection(this.state.activeRoot, this.state.selectedPath);
         this.render();
-        this.startInlineRename(this.state.selectedPath);
+        this.startInlineRename(this.state.selectedPath, { removeOnCancel: true });
     }
 
     renamePath(path, newName) {
@@ -992,16 +999,18 @@ class JSONCreator {
         this.state.expandedFolders = new Set([...this.state.expandedFolders].map((folderPath) => this.replacePathPrefix(folderPath, previousPath, renamedPath)));
         this.state.renamingPath = '';
         this.state.renamingValue = '';
+        this.state.newItemRenamePath = '';
         saveSelection(this.state.activeRoot, this.state.selectedPath);
         this.persistRoot();
         this.closeModal(false);
     }
 
-    startInlineRename(path) {
+    startInlineRename(path, options = {}) {
         const info = getParent(this.state.tree, path);
         if (!info) return;
         this.state.renamingPath = path;
         this.state.renamingValue = info.key;
+        this.state.newItemRenamePath = options.removeOnCancel ? path : '';
         this.state.contextMenu = null;
         this.render();
     }
@@ -1014,8 +1023,13 @@ class JSONCreator {
     }
 
     cancelInlineRename() {
+        if (this.state.newItemRenamePath && this.state.renamingPath === this.state.newItemRenamePath) {
+            this.removeNewItemFromRename(this.state.newItemRenamePath);
+            return;
+        }
         this.state.renamingPath = '';
         this.state.renamingValue = '';
+        this.state.newItemRenamePath = '';
         this.render();
     }
 
@@ -1075,18 +1089,70 @@ class JSONCreator {
         });
     }
 
-    openContextMenu(x, y, type, path) {
-        const menuWidth = 190;
-        const menuHeight = 260;
+    deleteEditorCase() {
+        const item = getNode(this.state.tree, this.state.editorPath);
+        if (isCase(item)) {
+            this.deleteSelected(this.state.editorPath);
+            return;
+        }
+        this.deleteSelected();
+    }
+
+    removeNewItemFromRename(path) {
+        const info = getParent(this.state.tree, path);
+        if (info) delete info.parent[info.key];
+        if (this.state.selectedPath === path || isPathWithin(this.state.selectedPath, path)) {
+            this.state.selectedPath = '';
+            saveSelection(this.state.activeRoot, '');
+        }
+        if (this.state.editorPath === path || isPathWithin(this.state.editorPath, path)) {
+            this.state.editorPath = '';
+            this.state.editor = { type: 'welcome', tab: 'shape' };
+        }
+        this.state.expandedFolders.delete(path);
+        this.state.renamingPath = '';
+        this.state.renamingValue = '';
+        this.state.newItemRenamePath = '';
+        this.persistRoot();
+        this.render();
+    }
+
+    openContextMenu(x, y, type, path, extra = {}) {
         this.update({
             contextMenu: {
                 type,
                 path,
-                x: Math.max(10, Math.min(x, window.innerWidth - menuWidth - 10)),
-                y: Math.max(10, Math.min(y, window.innerHeight - menuHeight - 10))
+                x,
+                y,
+                rawX: x,
+                rawY: y,
+                maxHeight: 'calc(100vh - 16px)',
+                ...extra
             },
             modal: null
         });
+    }
+
+    positionContextMenu() {
+        const menu = this.state.contextMenu;
+        const element = this.root?.querySelector('[data-context-menu]');
+        if (!menu || !element) return;
+        const margin = 8;
+        const availableHeight = Math.max(80, window.innerHeight - margin * 2);
+        element.style.maxHeight = `${availableHeight}px`;
+        const rect = element.getBoundingClientRect();
+        const left = Math.max(margin, Math.min(menu.rawX ?? menu.x, window.innerWidth - rect.width - margin));
+        const top = Math.max(margin, Math.min(menu.rawY ?? menu.y, window.innerHeight - rect.height - margin));
+        if (left === menu.x && top === menu.y && menu.maxHeight === `${availableHeight}px`) return;
+        this.state.contextMenu = {
+            ...menu,
+            x: left,
+            y: top,
+            maxHeight: `${availableHeight}px`
+        };
+        element.style.left = `${left}px`;
+        element.style.top = `${top}px`;
+        element.style.maxHeight = `${availableHeight}px`;
     }
 
     openExtraTools(event) {
