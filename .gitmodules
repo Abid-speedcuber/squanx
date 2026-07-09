@@ -1,0 +1,3 @@
+[submodule "vendor/draw-a-squan"]
+	path = vendor/draw-a-squan
+	url = /home/abid/Documents/GitHub/draw-a-squan
