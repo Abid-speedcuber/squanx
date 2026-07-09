@@ -1,4 +1,5 @@
 import { ensureFeatureModules, openDevtoolFullscreen } from './moduleLoader.js';
+import { expandCompactAlgset } from './algsetCodec.js';
 
 // Application State
 const AppState = {
@@ -90,6 +91,18 @@ function formatScrambleDisplay(scramble) {
         .trim();
 }
 
+function isRecoverableSolverRandomizationError(error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes("reading 'shift'")
+        || message.includes('property "shift"')
+        || message.includes("property 'shift'")
+        || message.includes('.shift');
+}
+
+function cleanSolverErrorMessage(error) {
+    return String(error?.message || error || 'Unknown solver error').replace(/^(solver error:\s*)+/i, '');
+}
+
 // Default algset structure
 const DEFAULT_ALGSET = {
     "New Folder": {
@@ -114,6 +127,14 @@ const DEFAULT_TRAINING_ALGSETS = [
 ];
 
 const DEFAULT_ALGSET_BASE_PATH = './default-algset/';
+
+function isDefaultTrainingAlgset(name) {
+    return DEFAULT_TRAINING_ALGSETS.some((item) => item.name === name);
+}
+
+function getImportedTrainingAlgsetNames() {
+    return Object.keys(AppState.trainingJSONs).filter((name) => !isDefaultTrainingAlgset(name));
+}
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -150,6 +171,9 @@ function loadTrainingJSONs() {
     if (saved) {
         try {
             AppState.trainingJSONs = JSON.parse(saved);
+            for (const [name, data] of Object.entries(AppState.trainingJSONs)) {
+                AppState.trainingJSONs[name] = expandCompactAlgset(data);
+            }
         } catch (e) {
             console.error('Error loading training JSONs:', e);
             AppState.trainingJSONs = {};
@@ -207,7 +231,7 @@ function activateTrainingJSON(name, options = {}) {
 
 function importTrainingJSONData(name, data, options = {}) {
     const { activate = true, selectAll = true } = options;
-    AppState.trainingJSONs[name] = data;
+    AppState.trainingJSONs[name] = expandCompactAlgset(data);
     AppState.selectedCasesByAlgset[name] = selectAll ? buildSelectedCasesForAlgset(name) : [];
     if (activate || !AppState.activeTrainingJSON) activateTrainingJSON(name, { selectAllWhenMissing: selectAll });
     saveTrainingJSONs();
@@ -527,14 +551,14 @@ async function generateNewScramble() {
                 }
             } catch (solverError) {
                 attempts++;
-                if (solverError.message && solverError.message.includes("Cannot read properties of undefined (reading 'shift')")) {
+                if (isRecoverableSolverRandomizationError(solverError)) {
                     if (attempts < maxAttempts) {
                         continue;
                     }
                 }
                 
                 console.error('Solver error after retries:', solverError);
-                scramble = 'Solver error: ' + solverError.message;
+                scramble = 'Solver error: ' + cleanSolverErrorMessage(solverError);
                 break;
             }
         }
@@ -1005,7 +1029,7 @@ function renderAlgsetSelectorContent() {
     const content = document.getElementById('algsetContent');
     if (!content) return;
 
-    const importedAlgsets = Object.keys(AppState.trainingJSONs);
+    const importedAlgsets = getImportedTrainingAlgsetNames();
 
     content.innerHTML = `
         <section class="algset-section">
@@ -1026,7 +1050,6 @@ function renderAlgsetSelectorContent() {
                     importedAlgsets.map(name => `
                         <div class="algset-item ${name === AppState.activeTrainingJSON ? 'active' : ''}" onclick='selectImportedAlgset(${JSON.stringify(name)})' oncontextmenu='openAlgsetContextMenu(event, ${JSON.stringify(name)}, "imported")'>
                             <span>${escapeHtml(name)}</span>
-                            <button class="algset-remove-btn" onclick='event.stopPropagation(); removeAlgset(${JSON.stringify(name)})'>×</button>
                         </div>
                     `).join('')
                 }
@@ -1061,7 +1084,7 @@ function getAlgsetContextItems(name, type) {
         { action: 'select', label: 'Select' }
     ];
     if (type !== 'default') {
-        const names = Object.keys(AppState.trainingJSONs);
+        const names = getImportedTrainingAlgsetNames();
         const index = names.indexOf(name);
         items.push(
             { action: 'delete', label: 'Delete' },
@@ -1139,10 +1162,15 @@ async function handleAlgsetContextAction(action, name, type) {
 }
 
 function moveImportedAlgset(name, direction) {
+    const importedNames = getImportedTrainingAlgsetNames();
+    const orderedNames = Object.keys(AppState.trainingJSONs);
+    const importedIndex = importedNames.indexOf(name);
+    const importedTargetName = importedNames[importedIndex + direction];
+    if (!importedTargetName) return;
     const entries = Object.entries(AppState.trainingJSONs);
     const index = entries.findIndex(([entryName]) => entryName === name);
-    const nextIndex = index + direction;
-    if (index < 0 || nextIndex < 0 || nextIndex >= entries.length) return;
+    const nextIndex = orderedNames.indexOf(importedTargetName);
+    if (index < 0 || nextIndex < 0) return;
     [entries[index], entries[nextIndex]] = [entries[nextIndex], entries[index]];
     AppState.trainingJSONs = Object.fromEntries(entries);
     saveTrainingJSONs();
@@ -1188,6 +1216,7 @@ window.selectImportedAlgset = function(name) {
 };
 
 window.removeAlgset = function(name) {
+    if (isDefaultTrainingAlgset(name)) return;
     showConfirmationModal(
         'Remove Algset',
         `Remove algset "${name}"?`,

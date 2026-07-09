@@ -1375,7 +1375,7 @@ function solveSquare1(hexInput) {
             }
         } else {
             const enigma = new SQ1Enigma();
-            const depth = Math.floor(Math.random() * 3); // Random depth 0-2
+            const depth = Math.floor(Math.random() * 2) + 1; // Random depth 1-2
             const randomizedResult = enigma.encode(hexInput, depth);
             
             const invertedHint = invertScramble(randomizedResult.notation);

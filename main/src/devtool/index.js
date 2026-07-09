@@ -1,5 +1,6 @@
 import { ensureFeatureModules, ensureXlsxScript } from '../moduleLoader.js';
 import { AppState, DEFAULT_ALGSET, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveLastScreen } from '../training.js';
+import { stringifyCompactAlgset } from '../algsetCodec.js';
 import {
     DEFAULT_LAYER,
     DOWN_MOVE_OPTIONS,
@@ -26,19 +27,89 @@ import {
     normalizeRoots,
     normalizeTree,
     replacePathPrefix,
-    sanitizeFilename
+    sanitizeFilename,
+    splitPath
 } from './model.js';
 import {
+    clearExpandedFolders,
     clearTemplate,
+    loadExpandedFolders,
+    loadLastAlgsetScript,
     loadSelection,
     loadTemplate,
+    saveExpandedFolders,
+    saveLastAlgsetScript,
     saveSelection,
     saveTemplate
 } from './storage.js';
 import { normalizeAlgorithmInput } from './parseAdapter.js';
+import {
+    completeAlgsetScript,
+    executeAlgsetScript,
+    formatScriptSummary,
+    getAlgsetScriptSuggestions
+} from './algsetScript.js';
 
 const RUN_COUNT = 100;
 const SQUANX_WORDMARK = '<span class="squanx-brand"><span class="squango-sq">Squan</span><span class="squango-go">X</span></span>';
+const SCRIPT_VALUE_PICKER_FIELDS = new Set(['top-layer', 'bottom-layer', 'parity', 'pre-abf', 'post-abf', 'rul', 'rdl', 'auf', 'adf']);
+const SCRIPT_PARITY_OPTIONS = [
+    ['on', 'Overall No Parity'],
+    ['op', 'Overall Parity'],
+    ['tnbn', 'Both Color No Parity'],
+    ['tpbn', 'Black Parity, White No Parity'],
+    ['tnbp', 'Black No Parity, White Parity'],
+    ['tpbp', 'Both Color Parity']
+];
+
+function normalizeScriptFieldAlias(field) {
+    const key = String(field || '').toLowerCase();
+    const map = {
+        toplayer: 'top-layer',
+        'top-layer': 'top-layer',
+        bottomlayer: 'bottom-layer',
+        'bottom-layer': 'bottom-layer',
+        preabf: 'pre-abf',
+        'pre-abf': 'pre-abf',
+        postabf: 'post-abf',
+        'post-abf': 'post-abf',
+        preauf: 'rul',
+        'pre-auf': 'rul',
+        preadf: 'rdl',
+        'pre-adf': 'rdl',
+        postauf: 'auf',
+        'post-auf': 'auf',
+        postadf: 'adf',
+        'post-adf': 'adf'
+    };
+    return map[key] || key;
+}
+
+function getScriptValuePickerRequest(text, cursor) {
+    const before = text.slice(0, cursor);
+    const match = before.match(/\b(top-layer|topLayer|bottom-layer|bottomLayer|parity|pre-abf|preABF|post-abf|postABF|pre-auf|preAUF|pre-adf|preADF|post-auf|postAUF|post-adf|postADF|rul|rdl|auf|adf)\s*=\s*(\[[^\]]*$|[^\s.,&]*)$/i);
+    if (!match) return null;
+    const field = normalizeScriptFieldAlias(match[1]);
+    if (!SCRIPT_VALUE_PICKER_FIELDS.has(field)) return null;
+    const value = match[2] || '';
+    return {
+        field,
+        value,
+        valueStart: cursor - value.length,
+        valueEnd: cursor
+    };
+}
+
+function parseScriptPickerList(value) {
+    const text = String(value || '').trim();
+    if (!text) return [];
+    const inner = text.startsWith('[') && text.endsWith(']') ? text.slice(1, -1) : text;
+    return inner.split(',').map((item) => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+}
+
+function formatScriptPickerList(values) {
+    return `[${values.join(',')}]`;
+}
 
 function faceMoveToNumber(move) {
     const value = String(move || '').trim();
@@ -64,6 +135,18 @@ function formatScrambleDisplay(scramble) {
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function isRecoverableSolverRandomizationError(error) {
+    const message = String(error?.message || error || '').toLowerCase();
+    return message.includes("reading 'shift'")
+        || message.includes('property "shift"')
+        || message.includes("property 'shift'")
+        || message.includes('.shift');
+}
+
+function cleanSolverErrorMessage(error) {
+    return String(error?.message || error || 'Unknown solver error').replace(/^(solver error:\s*)+/i, '');
 }
 
 function showFloatingMessage(message, type = 'info', duration = 3000) {
@@ -93,6 +176,18 @@ function downloadJSON(filename, data) {
     URL.revokeObjectURL(url);
 }
 
+function downloadTextJSON(filename, text) {
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${sanitizeFilename(filename)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
 function readFileAsText(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -100,6 +195,67 @@ function readFileAsText(file) {
         reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
         reader.readAsText(file);
     });
+}
+
+function getStoredActiveDevelopingRoot() {
+    try {
+        return localStorage.getItem('sq1ActiveDevelopingJSON') || '';
+    } catch {
+        return '';
+    }
+}
+
+function getScriptCompletionSuffix(text, cursor, suggestions) {
+    if (!isScriptAutocompleteContext(text, cursor)) return '';
+    const before = text.slice(0, cursor);
+    const prefix = before.match(/[a-z0-9_./"-]*$/i)?.[0] || '';
+    const suggestion = suggestions.find((item) => item.toLowerCase().startsWith(prefix.toLowerCase()));
+    if (!suggestion || !prefix || suggestion.length <= prefix.length) return '';
+    return suggestion.slice(prefix.length);
+}
+
+function isScriptAutocompleteContext(text, cursor) {
+    if (cursor < text.length) return false;
+    const before = text.slice(0, cursor);
+    const quoteMatches = before.match(/(?<!\\)["']/g) || [];
+    if (quoteMatches.length % 2 === 1) return false;
+    const currentToken = before.match(/[^\s.,&]*$/)?.[0] || '';
+    if (currentToken.includes('=')) return false;
+    const currentSegment = before.split(/[.,&\n]/).at(-1) || '';
+    if (/\b[a-z-]+\s*=\s*\S*$/i.test(currentSegment)) return false;
+    return true;
+}
+
+function highlightAlgsetScript(text, cursor = text.length, completion = '') {
+    const cursorMarker = '\uE000';
+    const flowKeywords = new Set(['if', 'where', 'and', 'from', 'with', 'to', 'then']);
+    const scopeKeywords = new Set(['in', 'here', 'root', 'selected', 'template', 'children', 'descendants']);
+    const executeCommands = new Set(['append', 'set', 'add', 'remove', 'replace', 'rename', 'copy']);
+    const createDeleteCommands = new Set(['create', 'delete']);
+    const targetTypes = new Set(['case-name', 'folder-name', 'path']);
+    const targetMethods = new Set(['is', 'contains', 'starts-with', 'ends-with', 'matches', 'has', 'split', 'left', 'right']);
+    const fields = new Set(['top-layer', 'toplayer', 'bottom-layer', 'bottomlayer', 'alg', 'parity', 'constraints', 'pre-abf', 'preabf', 'post-abf', 'postabf', 'pre-auf', 'preauf', 'pre-adf', 'preadf', 'post-auf', 'postauf', 'post-adf', 'postadf', 'rul', 'rdl', 'auf', 'adf']);
+    const source = `${text.slice(0, cursor)}${cursorMarker}${text.slice(cursor)}`;
+    const tokens = source.match(/\uE000|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\[[^\]]*\]|\{[^}]*\}|[a-zA-Z][a-zA-Z-]*|-?\d+|[=.,&]|\s+|./g) || [];
+    return tokens.map((token) => {
+        if (token === cursorMarker) return completion ? `<span class="script-ghost">${escapeHtml(completion)}</span>` : '';
+        if (token.includes(cursorMarker)) token = token.replaceAll(cursorMarker, '');
+        if (!token) return '';
+        if (/^\s+$/.test(token)) return escapeHtml(token);
+        const lower = token.toLowerCase();
+        if (/^["']/.test(token)) return `<span class="script-string">${escapeHtml(token)}</span>`;
+        if (/^\[/.test(token) || /^\{/.test(token)) return `<span class="script-list">${escapeHtml(token)}</span>`;
+        if (targetTypes.has(lower)) return `<span class="script-target">${escapeHtml(token)}</span>`;
+        if (targetMethods.has(lower)) return `<span class="script-method">${escapeHtml(token)}</span>`;
+        if (executeCommands.has(lower)) return `<span class="script-command">${escapeHtml(token)}</span>`;
+        if (createDeleteCommands.has(lower)) return `<span class="script-create-delete">${escapeHtml(token)}</span>`;
+        if (fields.has(lower)) return `<span class="script-field">${escapeHtml(token)}</span>`;
+        if (scopeKeywords.has(lower)) return `<span class="script-scope">${escapeHtml(token)}</span>`;
+        if (flowKeywords.has(lower)) return `<span class="script-keyword">${escapeHtml(token)}</span>`;
+        if (/^-?\d+$/.test(token)) return `<span class="script-number">${escapeHtml(token)}</span>`;
+        if (/^[=.,&]$/.test(token)) return `<span class="script-punct">${escapeHtml(token)}</span>`;
+        return escapeHtml(token);
+    }).join('');
 }
 
 class JSONCreator {
@@ -135,6 +291,8 @@ class JSONCreator {
         saveLastScreen('jsonCreator');
         document.getElementById('jsonCreatorFullscreen')?.remove();
         AppState.developingJSONs = normalizeRoots(AppState.developingJSONs, DEFAULT_ALGSET);
+        const savedRoot = getStoredActiveDevelopingRoot() || loadSelection().root;
+        if (savedRoot && AppState.developingJSONs[savedRoot]) AppState.activeDevelopingJSON = savedRoot;
         if (!AppState.activeDevelopingJSON || !AppState.developingJSONs[AppState.activeDevelopingJSON]) {
             AppState.activeDevelopingJSON = Object.keys(AppState.developingJSONs)[0] || 'default';
         }
@@ -142,7 +300,7 @@ class JSONCreator {
         this.state.activeRoot = AppState.activeDevelopingJSON;
         this.state.tree = clone(AppState.developingJSONs[this.state.activeRoot] || {});
         this.state.caseTemplate = loadTemplate(this.state.activeRoot);
-        this.state.expandedFolders = new Set(collectFolders(this.state.tree).map((folder) => folder.path));
+        this.state.expandedFolders = this.loadExpandedFolderState(this.state.activeRoot, this.state.tree);
         this.restoreSelection();
         this.mount();
         this.render();
@@ -163,6 +321,7 @@ class JSONCreator {
         this.root.addEventListener('dragover', (event) => this.handleDragOver(event), options);
         this.root.addEventListener('drop', (event) => this.handleDrop(event), options);
         this.root.addEventListener('keydown', (event) => this.handleRootKeydown(event), options);
+        this.root.addEventListener('keyup', (event) => this.handleRootKeyup(event), options);
         this.root.addEventListener('focusout', (event) => this.handleFocusOut(event), options);
         this.root.addEventListener('scroll', () => this.closeInfoBoxes(), { ...options, capture: true });
         document.addEventListener('keydown', (event) => this.handleDocumentKeydown(event), options);
@@ -201,7 +360,26 @@ class JSONCreator {
     persistRoot() {
         if (!this.state.activeRoot) return;
         AppState.developingJSONs[this.state.activeRoot] = clone(this.state.tree);
+        this.saveExpandedFolderState();
         saveDevelopingJSONs();
+    }
+
+    loadExpandedFolderState(rootName, tree) {
+        const validFolders = new Set(collectFolders(tree).map((folder) => folder.path));
+        const stored = loadExpandedFolders(rootName);
+        if (Array.isArray(stored)) return new Set(stored.filter((path) => validFolders.has(path)));
+        return new Set(validFolders);
+    }
+
+    pruneExpandedFolderState() {
+        const validFolders = new Set(collectFolders(this.state.tree).map((folder) => folder.path));
+        this.state.expandedFolders = new Set([...this.state.expandedFolders].filter((path) => validFolders.has(path)));
+    }
+
+    saveExpandedFolderState() {
+        if (!this.state.activeRoot) return;
+        this.pruneExpandedFolderState();
+        saveExpandedFolders(this.state.activeRoot, [...this.state.expandedFolders]);
     }
 
     render() {
@@ -277,14 +455,16 @@ class JSONCreator {
                 const renaming = this.state.renamingPath === currentPath;
                 const expander = folder ? (expanded ? '▾' : '▸') : '';
                 const childMarkup = folder && expanded ? this.renderTreeNode(item, currentPath, level + 1) : '';
-                return `
-                    <div class="json-creator-tree-item ${selected} ${renaming ? 'editing' : ''}" data-path="${escapeHtml(currentPath)}" data-kind="${folder ? 'folder' : 'case'}" data-action="select-tree-item" style="--tree-depth:${level};padding-left:${8 + level * 16}px">
+                const stickyOffset = level * 23;
+                const row = `
+                    <div class="json-creator-tree-item ${selected} ${renaming ? 'editing' : ''}" data-path="${escapeHtml(currentPath)}" data-kind="${folder ? 'folder' : 'case'}" data-action="select-tree-item" style="--tree-depth:${level};--sticky-offset:${stickyOffset}px;--sticky-z:${100 - level};padding-left:${8 + level * 16}px">
                         <span class="tree-expand-icon" data-action="toggle-folder" data-path="${escapeHtml(currentPath)}">${expander}</span>
                         <img class="tree-icon" src="viz/${folder ? 'folder' : 'case'}.svg" width="14" height="14" alt="">
                         ${renaming ? `<input id="treeRenameInput" class="tree-item-input" data-action="tree-rename-input" value="${escapeHtml(this.state.renamingValue || key)}" spellcheck="false">` : `<span class="tree-item-text">${escapeHtml(key)}</span>`}
                     </div>
-                    ${childMarkup}
                 `;
+                if (!folder) return row;
+                return `<div class="json-creator-tree-folder-block" data-folder-path="${escapeHtml(currentPath)}">${row}${childMarkup}</div>`;
             })
             .join('');
     }
@@ -364,18 +544,23 @@ class JSONCreator {
                 ${this.renderLayerInput('bottom', item.inputBottom || DEFAULT_LAYER, prefix)}
             </div>
             <div class="json-creator-section">
-                <h4>Constraints</h4>
-                <p style="font-size:12px;color:var(--devtool-muted,#666);margin:0 0 12px;font-style:italic;">Don't touch this unless you know what you are doing</p>
-                ${this.renderConstraints(item.constraints || {})}
-                <div class="json-creator-form-group">
-                    <label>Position (e.g., A, BC, D)</label>
-                    <input id="constraintPosition" placeholder="Enter position...">
+                <div class="constraints-panel">
+                    <div class="constraints-header">
+                        <h4>Constraints <button class="json-creator-icon-btn info-btn" type="button" style="display:inline-flex;padding:1px 6px;">i</button><span class="info-box">Limit which pieces are allowed at specific positions.</span></h4>
+                    </div>
+                    ${this.renderConstraints(item.constraints || {})}
+                    <div class="constraints-form">
+                        <label class="constraint-field">
+                            <span>Position</span>
+                            <input id="constraintPosition" placeholder="A, BC, D">
+                        </label>
+                        <label class="constraint-field">
+                            <span>Allowed pieces</span>
+                            <input id="constraintValues" placeholder="1, 3, 5, 7">
+                        </label>
+                        <button class="json-creator-btn constraint-add-btn" data-action="add-constraint" data-prefix="${prefix}">Add Constraint</button>
+                    </div>
                 </div>
-                <div class="json-creator-form-group">
-                    <label>Allowed Pieces (comma-separated)</label>
-                    <input id="constraintValues" placeholder="e.g., 1,3,5,7">
-                </div>
-                <button class="json-creator-btn" data-action="add-constraint" data-prefix="${prefix}">Add Constraint</button>
             </div>
         `;
     }
@@ -464,13 +649,20 @@ class JSONCreator {
 
     renderConstraints(constraints) {
         const entries = Object.entries(constraints);
-        if (!entries.length) return '<p style="color:var(--devtool-muted,#777);">No constraints set.</p>';
-        return entries.map(([position, values]) => `
-            <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:8px;">
-                <span><strong>${escapeHtml(position)}</strong>: ${escapeHtml(values.join(', '))}</span>
-                <button class="json-creator-btn json-creator-btn-secondary" data-action="remove-constraint" data-position="${escapeHtml(position)}">Remove</button>
+        if (!entries.length) return '<div class="constraints-empty">No constraints set</div>';
+        return `
+            <div class="constraints-list">
+                ${entries.map(([position, values]) => `
+                    <div class="constraint-row">
+                        <div class="constraint-row-main">
+                            <span class="constraint-position">${escapeHtml(position)}</span>
+                            <span class="constraint-values">${escapeHtml(values.join(', '))}</span>
+                        </div>
+                        <button class="json-creator-btn json-creator-btn-secondary constraint-remove-btn" data-action="remove-constraint" data-position="${escapeHtml(position)}">Remove</button>
+                    </div>
+                `).join('')}
             </div>
-        `).join('');
+        `;
     }
 
     getParityMode(item) {
@@ -509,6 +701,7 @@ class JSONCreator {
         if (modal.type === 'bulk-import') return this.renderBulkImportModal();
         if (modal.type === 'data-management') return this.renderDataManagementModal();
         if (modal.type === 'devtool-help') return this.renderDevtoolHelpModal();
+        if (modal.type === 'algset-script') return this.renderAlgsetScriptModal(modal);
         return '';
     }
 
@@ -559,12 +752,13 @@ class JSONCreator {
     }
 
     renderExtractModal() {
+        const jsonText = this.getExtractedJSONText();
         return `
             <div class="modal active extract-json-modal" data-action="modal-backdrop">
                 <div class="modal-content extract-json-content">
                     <div class="modal-header"><h2>Extract JSON: ${escapeHtml(this.state.activeRoot)}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body extract-json-body">
-                        <textarea id="extractedJSON" readonly style="width:100%;height:55vh;font-family:monospace;">${escapeHtml(JSON.stringify(this.state.tree, null, 2))}</textarea>
+                        <textarea id="extractedJSON" readonly style="width:100%;height:55vh;font-family:monospace;">${escapeHtml(jsonText)}</textarea>
                         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
                             <button class="json-creator-btn json-creator-btn-secondary" data-action="copy-extracted-json">Copy</button>
                             <button class="json-creator-btn" data-action="train-extracted-json">Train</button>
@@ -652,6 +846,113 @@ class JSONCreator {
         `;
     }
 
+    renderAlgsetScriptModal(modal) {
+        const script = modal.script || '';
+        const cursor = modal.cursor ?? script.length;
+        const suggestions = getAlgsetScriptSuggestions({
+            tree: this.state.tree,
+            text: script,
+            cursor
+        });
+        const completion = getScriptCompletionSuffix(script, cursor, suggestions);
+        const highlighted = highlightAlgsetScript(script, cursor, completion);
+        return `
+            <div class="modal active extract-json-modal" data-action="modal-backdrop">
+                <div class="modal-content devtool-modal algset-script-modal">
+                    <div class="modal-header"><h2>Run Script: ${escapeHtml(modal.scopeLabel || 'root')}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
+                    <div class="modal-body algset-script-body">
+                        <div class="algset-script-editor">
+                            <pre id="algsetScriptHighlight" class="algset-script-highlight" aria-hidden="true">${highlighted}</pre>
+                            <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="if case-name contains &quot;Jf/&quot; in here append top-layer=W11W55Y33W77.">${escapeHtml(script)}</textarea>
+                        </div>
+                        <div class="algset-script-actions">
+                            <button class="json-creator-btn json-creator-btn-secondary" data-action="modal-cancel">Close</button>
+                            <button class="json-creator-btn" data-action="run-algset-script">Run</button>
+                        </div>
+                        ${modal.summary ? `<pre class="algset-script-summary">${escapeHtml(modal.summary)}</pre>` : ''}
+                    </div>
+                </div>
+                ${modal.scriptPicker ? this.renderScriptValuePicker(modal.scriptPicker) : ''}
+            </div>
+        `;
+    }
+
+    renderScriptValuePicker(picker) {
+        const title = this.getScriptPickerTitle(picker.field);
+        return `
+            <div class="script-value-picker-backdrop" data-action="script-picker-backdrop">
+                <div class="modal-content devtool-modal script-value-picker-modal">
+                    <div class="modal-header"><h2>${escapeHtml(title)}</h2><button class="close-btn" data-action="cancel-script-picker">×</button></div>
+                    <div class="modal-body script-value-picker-body">
+                        ${picker.kind === 'layer' ? this.renderScriptLayerPicker(picker) : this.renderScriptOptionsPicker(picker)}
+                        <div class="script-value-picker-actions">
+                            <button class="json-creator-btn json-creator-btn-secondary" data-action="cancel-script-picker">Cancel</button>
+                            <button class="json-creator-btn" data-action="apply-script-picker">Insert</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    getScriptPickerTitle(field) {
+        const titles = {
+            'top-layer': 'Pick Top Layer',
+            'bottom-layer': 'Pick Bottom Layer',
+            parity: 'Pick Parity',
+            'pre-abf': 'Pick Pre ABF',
+            'post-abf': 'Pick Post ABF',
+            rul: 'Pick Pre AUF',
+            rdl: 'Pick Pre ADF',
+            auf: 'Pick Post AUF',
+            adf: 'Pick Post ADF'
+        };
+        return titles[field] || 'Pick Value';
+    }
+
+    renderScriptLayerPicker(picker) {
+        const layer = picker.field === 'bottom-layer' ? 'bottom' : 'top';
+        return `
+            <div class="script-layer-picker">
+                <input id="scriptLayerPickerInput" class="shape-layer-input script-layer-picker-input" maxlength="12" value="${escapeHtml(picker.value || DEFAULT_LAYER)}" spellcheck="false" readonly>
+                <div id="scriptLayerPickerInteractive" class="shape-renderer script-layer-picker-renderer" data-layer="${layer}" data-render-size="240"></div>
+            </div>
+        `;
+    }
+
+    renderScriptOptionsPicker(picker) {
+        const values = new Set(parseScriptPickerList(picker.value));
+        if (picker.field === 'parity') {
+            return `<div class="script-picker-grid script-picker-grid-wide">${SCRIPT_PARITY_OPTIONS.map(([value, label]) => this.renderScriptPickerCheckbox(value, values.has(value), label)).join('')}</div>`;
+        }
+        const config = this.getScriptOptionsPickerConfig(picker.field);
+        return `
+            <div class="script-picker-section">
+                <h3>${escapeHtml(config.label)}</h3>
+                <div class="script-picker-grid">${config.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value))).join('')}</div>
+            </div>
+        `;
+    }
+
+    getScriptOptionsPickerConfig(field) {
+        if (field === 'auf') return { label: 'Post AUF', options: MOVE_OPTIONS };
+        if (field === 'adf') return { label: 'Post ADF', options: DOWN_MOVE_OPTIONS };
+        if (field === 'post-abf') return { label: 'Post ABF values', options: MOVE_OPTIONS };
+        return {
+            label: field === 'rdl' ? 'Pre ADF' : field === 'rul' ? 'Pre AUF' : 'Pre ABF values',
+            options: NUMBER_OPTIONS
+        };
+    }
+
+    renderScriptPickerCheckbox(value, checked, label = value) {
+        return `
+            <label class="json-creator-grid-item script-picker-option">
+                <input type="checkbox" data-script-picker-value="${escapeHtml(value)}" ${checked ? 'checked' : ''}>
+                <span>${escapeHtml(label)}</span>
+            </label>
+        `;
+    }
+
     renderRunModal() {
         const run = this.state.run;
         if (!run) return '';
@@ -663,20 +964,24 @@ class JSONCreator {
                         <div class="progress-bar-container"><div class="progress-bar-fill" style="width:${run.progress}%"></div><div class="progress-text">${run.results.length} / ${RUN_COUNT}</div></div>
                         <button class="json-creator-btn json-creator-btn-secondary" data-action="stop-run" ${run.stopped || run.done ? 'disabled' : ''}>Stop</button>
                     </div>
-                    <div class="run-modal-body">${run.results.map((result) => `
-                        <div class="scramble-result-item">
-                            <div class="scramble-result-info">
-                                <div class="run-field"><strong>Case Name:</strong><span>${escapeHtml(result.caseName)}</span></div>
-                                <div class="run-field"><strong>Path:</strong><span>${escapeHtml(result.path)}</span></div>
-                                <div class="run-field run-field-scramble"><strong>Scramble:</strong><span>${escapeHtml(result.scramble)}</span></div>
-                                <div class="run-field"><strong>Post-ABF:</strong><span>${escapeHtml(result.postAbf)}</span></div>
-                                <div class="run-field"><strong>Pre-ABF:</strong><span>${escapeHtml(result.preAbf)}</span></div>
-                                <div class="run-field"><strong>Equator:</strong><span>${escapeHtml(result.equator)}</span></div>
-                            </div>
-                            <div class="scramble-result-viz">${result.viz || '<div style="color:#888;">Visualization unavailable</div>'}</div>
-                        </div>
-                    `).join('')}</div>
+                    <div class="run-modal-body">${run.results.map((result) => this.renderRunResult(result)).join('')}</div>
                 </div>
+            </div>
+        `;
+    }
+
+    renderRunResult(result) {
+        return `
+            <div class="scramble-result-item">
+                <div class="scramble-result-info">
+                    <div class="run-field"><strong>Case Name:</strong><span>${escapeHtml(result.caseName)}</span></div>
+                    <div class="run-field"><strong>Path:</strong><span>${escapeHtml(result.path)}</span></div>
+                    <div class="run-field run-field-scramble"><strong>Scramble:</strong><span>${escapeHtml(result.scramble)}</span></div>
+                    <div class="run-field"><strong>Post-ABF:</strong><span>${escapeHtml(result.postAbf)}</span></div>
+                    <div class="run-field"><strong>Pre-ABF:</strong><span>${escapeHtml(result.preAbf)}</span></div>
+                    <div class="run-field"><strong>Equator:</strong><span>${escapeHtml(result.equator)}</span></div>
+                </div>
+                <div class="scramble-result-viz">${result.viz || '<div style="color:#888;">Visualization unavailable</div>'}</div>
             </div>
         `;
     }
@@ -686,6 +991,19 @@ class JSONCreator {
         if (rename) {
             rename.focus();
             rename.select();
+        }
+        const scriptInput = this.root?.querySelector('#algsetScriptInput');
+        const scriptPickerOpen = Boolean(this.state.modal?.type === 'algset-script' && this.state.modal.scriptPicker);
+        if (scriptInput && !options.skipScriptFocus && !scriptPickerOpen) {
+            scriptInput.focus();
+            const cursor = this.state.modal?.type === 'algset-script'
+                ? Math.min(this.state.modal.cursor ?? scriptInput.value.length, scriptInput.value.length)
+                : scriptInput.value.length;
+            scriptInput.selectionStart = scriptInput.selectionEnd = cursor;
+            this.updateScriptSuggestions();
+        }
+        if (scriptInput) {
+            scriptInput.addEventListener('scroll', () => this.syncScriptEditorScroll(scriptInput), { signal: this.abortController.signal });
         }
         const treeRename = this.root?.querySelector('#treeRenameInput');
         if (treeRename) {
@@ -701,8 +1019,24 @@ class JSONCreator {
         }
         const tree = this.root?.querySelector('#jsonCreatorTree');
         if (tree) tree.scrollTop = options.treeScrollTop ?? 0;
+        if (treeRename && this.state.newItemRenamePath) this.scrollTreeRenameIntoView(treeRename);
         this.positionContextMenu();
         this.renderShapeVisuals();
+        this.renderScriptPickerVisual();
+    }
+
+    scrollTreeRenameIntoView(input) {
+        const tree = this.root?.querySelector('#jsonCreatorTree');
+        const row = input.closest('.json-creator-tree-item');
+        if (!tree || !row) return;
+        const margin = 10;
+        const treeRect = tree.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        if (rowRect.top < treeRect.top + margin) {
+            tree.scrollTop -= treeRect.top + margin - rowRect.top;
+        } else if (rowRect.bottom > treeRect.bottom - margin) {
+            tree.scrollTop += rowRect.bottom - (treeRect.bottom - margin);
+        }
     }
 
     handleClick(event) {
@@ -713,6 +1047,13 @@ class JSONCreator {
             return;
         }
         if (!target.closest('.info-box')) this.closeInfoBoxes();
+        if (target.id === 'algsetScriptInput') {
+            setTimeout(() => this.updateScriptCursorFromInput(target), 0);
+        }
+        if (this.state.contextMenu && !target.closest('[data-context-menu]')) {
+            this.update({ contextMenu: null, modal: this.state.modal });
+            return;
+        }
         const actionElement = target.closest('[data-action]');
         if (!actionElement || !this.root?.contains(actionElement)) {
             if (target.id === 'jsonCreatorTree') {
@@ -736,9 +1077,10 @@ class JSONCreator {
         }
 
         if (action === 'modal-backdrop' && target === actionElement) return this.closeModal(true);
+        if (action === 'script-picker-backdrop' && target === actionElement) return this.closeScriptValuePicker();
         if (action === 'tree-rename-input') return;
         if (action === 'select-tree-item') {
-            if (event.detail >= 2) return this.startInlineRename(actionElement.dataset.path);
+            if (event.detail >= 2 && this.isTreeTextRenameTarget(event)) return this.startInlineRename(actionElement.dataset.path);
             return this.selectPath(actionElement.dataset.path);
         }
         if (action === 'toggle-folder') return this.toggleFolder(actionElement.dataset.path);
@@ -772,6 +1114,9 @@ class JSONCreator {
         if (action === 'open-bulk-import') return this.update({ modal: { type: 'bulk-import' }, contextMenu: null });
         if (action === 'process-file-import') return void this.processFileImport(actionElement.dataset.mode);
         if (action === 'process-bulk-import') return void this.processBulkImport();
+        if (action === 'run-algset-script') return this.runAlgsetScript();
+        if (action === 'cancel-script-picker') return this.closeScriptValuePicker();
+        if (action === 'apply-script-picker') return this.applyScriptValuePicker();
         if (action === 'export-all-data') return this.exportAllData();
         if (action === 'open-general-import') return this.update({ modal: { type: 'file-import', scope: 'all', title: 'Import Data' } });
         if (action === 'open-devtool-help') return this.update({ modal: { type: 'devtool-help' }, contextMenu: null });
@@ -790,15 +1135,22 @@ class JSONCreator {
     }
 
     handleDoubleClick(event) {
+        if (!this.isTreeTextRenameTarget(event)) return;
         const row = event.target.closest('.json-creator-tree-item');
         if (!row) return;
         this.startInlineRename(row.dataset.path);
+    }
+
+    isTreeTextRenameTarget(event) {
+        const text = event.target.closest('.tree-item-text');
+        return Boolean(text && this.root?.contains(text));
     }
 
     handleContextMenu(event) {
         const row = event.target.closest('.json-creator-tree-item');
         if (row) {
             event.preventDefault();
+            this.focusPathForContextMenu(row.dataset.path);
             this.openContextMenu(event.clientX, event.clientY, 'item', row.dataset.path);
             return;
         }
@@ -818,6 +1170,14 @@ class JSONCreator {
         const target = event.target;
         if (target.matches('.shape-layer-input')) return this.updateLayer(target.dataset.layer, target.value);
         if (target.dataset.action === 'algorithm-input') return void this.handleAlgorithmInput(target.value);
+        if (target.dataset.action === 'algset-script-input') {
+            if (this.state.modal?.type === 'algset-script') {
+                this.state.modal.script = target.value;
+                this.state.modal.cursor = target.selectionStart ?? target.value.length;
+                this.updateScriptSuggestions();
+            }
+            return;
+        }
         if (target.dataset.action === 'tree-rename-input') {
             this.state.renamingValue = target.value;
             return;
@@ -862,6 +1222,29 @@ class JSONCreator {
     }
 
     handleRootKeydown(event) {
+        if (event.target.id === 'algsetScriptInput') {
+            if (event.key === 'Tab') {
+                event.preventDefault();
+                if (this.openScriptValuePickerFromInput(event.target)) return;
+                this.completeAlgsetScriptInput();
+            } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                event.preventDefault();
+                this.runAlgsetScript();
+            }
+            return;
+        }
+        if (this.state.modal?.type === 'algset-script' && this.state.modal.scriptPicker && event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeScriptValuePicker();
+            return;
+        }
+        if (event.target.id === 'algorithmTextInput' && event.key === 'Enter' && !event.isComposing) {
+            event.preventDefault();
+            this.handleAlgorithmInput(event.target.value);
+            this.applyAlgorithmInput(event.shiftKey);
+            return;
+        }
         if (event.key !== 'Enter' && event.key !== 'Escape') return;
         if (event.target.id === 'renameInput') {
             if (event.key === 'Enter') this.confirmRename();
@@ -879,6 +1262,10 @@ class JSONCreator {
         }
     }
 
+    handleRootKeyup(event) {
+        if (event.target.id === 'algsetScriptInput') this.updateScriptCursorFromInput(event.target);
+    }
+
     handleFocusOut(event) {
         if (event.target.id !== 'treeRenameInput') return;
         setTimeout(() => {
@@ -891,13 +1278,18 @@ class JSONCreator {
     handleDocumentKeydown(event) {
         if (!this.root || !document.body.contains(this.root)) return;
         const activeElement = document.activeElement;
-        const editingText = ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName || '') || Boolean(activeElement?.isContentEditable);
+        const eventElement = event.target;
+        const editingText = ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName || '')
+            || ['INPUT', 'TEXTAREA', 'SELECT'].includes(eventElement?.tagName || '')
+            || Boolean(activeElement?.isContentEditable)
+            || Boolean(eventElement?.isContentEditable);
+        if (editingText) return;
         const plainKey = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
-        const shortcutsAvailable = !editingText && !this.state.modal && !this.state.contextMenu && !this.state.run;
-        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c' && !editingText) {
+        const shortcutsAvailable = !this.state.modal && !this.state.contextMenu && !this.state.run;
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
             event.preventDefault();
             this.copy();
-        } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v' && !editingText) {
+        } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
             event.preventDefault();
             if (this.state.clipboard) this.paste();
             else void this.pasteSystemClipboard();
@@ -914,9 +1306,6 @@ class JSONCreator {
         } else if (event.key === 'Delete' && shortcutsAvailable) {
             event.preventDefault();
             this.deleteEditorCase();
-        } else if (event.key === 'Backspace' && !editingText) {
-            event.preventDefault();
-            this.deleteSelected();
         } else if (event.key === 'Escape') {
             if (this.state.contextMenu) this.update({ contextMenu: null });
             else if (this.state.modal) this.closeModal(false);
@@ -944,14 +1333,27 @@ class JSONCreator {
         } else if (isFolder(node)) {
             if (this.state.expandedFolders.has(path)) this.state.expandedFolders.delete(path);
             else this.state.expandedFolders.add(path);
+            this.saveExpandedFolderState();
         }
         if (shouldRender) this.render();
+    }
+
+    focusPathForContextMenu(path) {
+        const node = getNode(this.state.tree, path);
+        if (!node) return;
+        this.state.selectedPath = path;
+        saveSelection(this.state.activeRoot, path);
+        if (isCase(node)) {
+            this.state.editorPath = path;
+            this.state.editor = { type: 'case', tab: 'shape' };
+        }
     }
 
     toggleFolder(path) {
         if (!path) return;
         if (this.state.expandedFolders.has(path)) this.state.expandedFolders.delete(path);
         else this.state.expandedFolders.add(path);
+        this.saveExpandedFolderState();
         this.render();
     }
 
@@ -1224,6 +1626,7 @@ class JSONCreator {
                 { label: 'New Case', action: 'new-case' },
                 { label: 'New Folder', action: 'new-folder' },
                 { label: 'Bulk Import', action: 'open-bulk-import' },
+                { label: 'Run Script...', action: 'open-algset-script' },
                 { separator: true },
                 { label: 'Paste', action: 'paste', disabled: !this.state.clipboard }
             ];
@@ -1234,6 +1637,7 @@ class JSONCreator {
                 { label: 'New Case', action: 'new-case' },
                 { label: 'New Folder', action: 'new-folder' },
                 { label: 'Bulk Import', action: 'open-bulk-import' },
+                { label: 'Run Script...', action: 'open-algset-script' },
                 { separator: true },
                 { label: 'Rename', action: 'rename-selected' },
                 { label: 'Run', action: 'run-context' },
@@ -1276,6 +1680,7 @@ class JSONCreator {
         if (action === 'new-case') return this.newCase(menu.path);
         if (action === 'new-folder') return this.newFolder(menu.path);
         if (action === 'open-bulk-import') return this.update({ modal: { type: 'bulk-import', targetPath: menu.path }, contextMenu: null });
+        if (action === 'open-algset-script') return this.openAlgsetScript(menu.path);
         if (action === 'rename-selected') {
             return this.startInlineRename(menu.path);
         }
@@ -1327,11 +1732,12 @@ class JSONCreator {
         AppState.activeDevelopingJSON = rootName;
         this.state.activeRoot = rootName;
         this.state.tree = clone(AppState.developingJSONs[rootName]);
+        saveDevelopingJSONs();
         this.state.caseTemplate = loadTemplate(rootName);
         this.state.selectedPath = '';
         this.state.editorPath = '';
         this.state.editor = { type: 'welcome', tab: 'shape' };
-        this.state.expandedFolders = new Set(collectFolders(this.state.tree).map((folder) => folder.path));
+        this.state.expandedFolders = this.loadExpandedFolderState(rootName, this.state.tree);
         this.state.modal = null;
         this.restoreSelection();
         this.render();
@@ -1353,33 +1759,40 @@ class JSONCreator {
         if (!oldName || !rootName || oldName === rootName) return this.closeModal(false);
         if (AppState.developingJSONs[rootName]) return showFloatingMessage('A root with this name already exists', 'error');
         this.persistRoot();
+        const expandedFolders = oldName === this.state.activeRoot
+            ? [...this.state.expandedFolders]
+            : loadExpandedFolders(oldName);
         AppState.developingJSONs[rootName] = AppState.developingJSONs[oldName] || {};
         delete AppState.developingJSONs[oldName];
+        saveExpandedFolders(rootName, Array.isArray(expandedFolders) ? expandedFolders : []);
+        clearExpandedFolders(oldName);
         if (AppState.activeDevelopingJSON === oldName) AppState.activeDevelopingJSON = rootName;
         saveDevelopingJSONs();
         this.closeModal(false);
-        this.switchRoot(AppState.activeDevelopingJSON);
+        this.switchRoot(AppState.activeDevelopingJSON, { persistCurrent: false });
     }
 
     exportRootJSON(rootName) {
         const root = AppState.developingJSONs[rootName];
         if (!root) return;
         if (rootName === this.state.activeRoot) this.persistRoot();
-        downloadJSON(rootName, rootName === this.state.activeRoot ? this.state.tree : root);
+        downloadTextJSON(rootName, stringifyCompactAlgset(rootName === this.state.activeRoot ? this.state.tree : root));
         this.update({ contextMenu: null });
     }
 
     resetRootName(rootName) {
         if (!rootName || !AppState.developingJSONs[rootName]) return;
         AppState.developingJSONs[rootName] = normalizeTree(DEFAULT_ALGSET);
+        clearExpandedFolders(rootName);
         if (rootName === this.state.activeRoot) {
             this.state.tree = clone(AppState.developingJSONs[rootName]);
             this.state.selectedPath = '';
             this.state.editorPath = '';
             this.state.editor = { type: 'welcome', tab: 'shape' };
-            this.state.expandedFolders = new Set(collectFolders(this.state.tree).map((folder) => folder.path));
+            this.state.expandedFolders.clear();
             this.state.caseTemplate = null;
             clearTemplate(rootName);
+            clearExpandedFolders(rootName);
         }
         saveDevelopingJSONs();
         showFloatingMessage('Root reset', 'success');
@@ -1390,6 +1803,7 @@ class JSONCreator {
         if (!rootName || !AppState.developingJSONs[rootName]) return;
         delete AppState.developingJSONs[rootName];
         clearTemplate(rootName);
+        clearExpandedFolders(rootName);
         if (!Object.keys(AppState.developingJSONs).length) {
             AppState.developingJSONs.default = normalizeTree(DEFAULT_ALGSET);
             AppState.activeDevelopingJSON = 'default';
@@ -1416,15 +1830,19 @@ class JSONCreator {
     async copyExtractedJSON() {
         const textarea = this.root?.querySelector('#extractedJSON');
         try {
-            await navigator.clipboard.writeText(textarea?.value || JSON.stringify(this.state.tree, null, 2));
+            await navigator.clipboard.writeText(textarea?.value || this.getExtractedJSONText());
             showFloatingMessage('JSON copied to clipboard', 'success');
         } catch (error) {
             showFloatingMessage(`Failed to copy: ${error.message}`, 'error');
         }
     }
 
+    getExtractedJSONText() {
+        return stringifyCompactAlgset(this.state.tree);
+    }
+
     downloadRootJSON() {
-        downloadJSON(this.state.activeRoot, this.state.tree);
+        downloadTextJSON(this.state.activeRoot, this.getExtractedJSONText());
     }
 
     trainExtractedJSON() {
@@ -1436,6 +1854,177 @@ class JSONCreator {
         this.root = null;
         renderApp();
         void generateNewScramble();
+    }
+
+    openAlgsetScript(scopePath = '') {
+        const scopeNode = scopePath ? getNode(this.state.tree, scopePath) : this.state.tree;
+        const scopeLabel = scopePath && scopeNode ? getPathName(scopePath) : this.state.activeRoot;
+        this.update({
+            modal: {
+                type: 'algset-script',
+                scopePath: isFolder(scopeNode) ? scopePath : '',
+                scopeLabel,
+                script: loadLastAlgsetScript(),
+                summary: ''
+            },
+            contextMenu: null
+        });
+    }
+
+    updateScriptSuggestions() {
+        const input = this.root?.querySelector('#algsetScriptInput');
+        const highlight = this.root?.querySelector('#algsetScriptHighlight');
+        if (!input || !highlight) return;
+        const suggestions = getAlgsetScriptSuggestions({
+            tree: this.state.tree,
+            text: input.value,
+            cursor: input.selectionStart ?? input.value.length
+        });
+        const cursor = input.selectionStart ?? input.value.length;
+        const completion = getScriptCompletionSuffix(input.value, cursor, suggestions);
+        highlight.innerHTML = highlightAlgsetScript(input.value, cursor, completion);
+        this.syncScriptEditorScroll(input);
+    }
+
+    updateScriptCursorFromInput(input) {
+        if (this.state.modal?.type !== 'algset-script') return;
+        this.state.modal.script = input.value;
+        this.state.modal.cursor = input.selectionStart ?? input.value.length;
+        this.updateScriptSuggestions();
+    }
+
+    syncScriptEditorScroll(input) {
+        const highlight = this.root?.querySelector('#algsetScriptHighlight');
+        if (!highlight || !input) return;
+        highlight.scrollTop = input.scrollTop;
+        highlight.scrollLeft = input.scrollLeft;
+    }
+
+    completeAlgsetScriptInput() {
+        const input = this.root?.querySelector('#algsetScriptInput');
+        if (!input) return;
+        const cursor = input.selectionStart ?? input.value.length;
+        if (!isScriptAutocompleteContext(input.value, cursor)) {
+            this.updateScriptSuggestions();
+            return;
+        }
+        const completed = completeAlgsetScript({
+            tree: this.state.tree,
+            text: input.value,
+            cursor
+        });
+        input.value = completed.text;
+        input.selectionStart = input.selectionEnd = completed.cursor;
+        if (this.state.modal?.type === 'algset-script') {
+            this.state.modal.script = completed.text;
+            this.state.modal.cursor = completed.cursor;
+        }
+        this.updateScriptSuggestions();
+    }
+
+    openScriptValuePickerFromInput(input) {
+        if (this.state.modal?.type !== 'algset-script') return false;
+        const cursor = input.selectionStart ?? input.value.length;
+        const request = getScriptValuePickerRequest(input.value, cursor);
+        if (!request) return false;
+        this.state.modal.script = input.value;
+        this.state.modal.cursor = cursor;
+        this.state.modal.scriptPicker = this.createScriptValuePicker(request);
+        this.render();
+        return true;
+    }
+
+    createScriptValuePicker(request) {
+        const layer = request.field === 'top-layer' || request.field === 'bottom-layer';
+        const parsedValues = parseScriptPickerList(request.value);
+        const value = layer
+            ? (/^[0-9A-FECWXYZR]{12}$/i.test(request.value) ? request.value.toUpperCase() : DEFAULT_LAYER)
+            : formatScriptPickerList(parsedValues);
+        return {
+            ...request,
+            kind: layer ? 'layer' : 'options',
+            value
+        };
+    }
+
+    closeScriptValuePicker() {
+        const modal = this.state.modal;
+        if (modal?.type !== 'algset-script') return;
+        this.update({ modal: { ...modal, scriptPicker: null }, contextMenu: null });
+    }
+
+    applyScriptValuePicker() {
+        const modal = this.state.modal;
+        const picker = modal?.scriptPicker;
+        if (modal?.type !== 'algset-script' || !picker) return;
+        const script = modal.script || '';
+        const value = picker.kind === 'layer'
+            ? (this.root?.querySelector('#scriptLayerPickerInput')?.value || picker.value || DEFAULT_LAYER)
+            : this.getScriptOptionsPickerValue();
+        const nextScript = `${script.slice(0, picker.valueStart)}${value}${script.slice(picker.valueEnd)}`;
+        const nextCursor = picker.valueStart + value.length;
+        this.update({
+            modal: {
+                ...modal,
+                script: nextScript,
+                cursor: nextCursor,
+                scriptPicker: null
+            },
+            contextMenu: null
+        });
+    }
+
+    getScriptOptionsPickerValue() {
+        const checked = [...this.root?.querySelectorAll('[data-script-picker-value]:checked') || []]
+            .map((input) => input.dataset.scriptPickerValue)
+            .filter((value) => value !== undefined);
+        return formatScriptPickerList(checked);
+    }
+
+    runAlgsetScript() {
+        const modal = this.state.modal;
+        if (modal?.type !== 'algset-script') return;
+        const input = this.root?.querySelector('#algsetScriptInput');
+        const script = input?.value || modal.script || '';
+        saveLastAlgsetScript(script);
+        const result = executeAlgsetScript(script, {
+            tree: this.state.tree,
+            scopePath: modal.scopePath || '',
+            selectedPath: this.state.selectedPath,
+            template: this.state.caseTemplate
+        });
+        const summary = formatScriptSummary(result.summary);
+        if (!result.ok) {
+            this.update({ modal: { ...modal, script, summary }, contextMenu: null });
+            showFloatingMessage('Script did not run', 'error');
+            return;
+        }
+        const deletedCount = result.summary.deletedCases + result.summary.deletedFolders;
+        if (deletedCount > 5) {
+            this.openConfirm('Run Script', `This script deletes ${deletedCount} items. Run it anyway?`, () => {
+                this.applyAlgsetScriptResult(result, { ...modal, script, summary });
+            }, () => {
+                this.update({ modal: { ...modal, script, summary: `${summary}\n\nCancelled before applying deletes.` }, contextMenu: null });
+            });
+            return;
+        }
+        this.applyAlgsetScriptResult(result, { ...modal, script, summary });
+    }
+
+    applyAlgsetScriptResult(result, modal) {
+        this.state.tree = result.tree;
+        this.pruneExpandedFolderState();
+        if (this.state.selectedPath && !getNode(this.state.tree, this.state.selectedPath)) {
+            this.state.selectedPath = '';
+            saveSelection(this.state.activeRoot, '');
+        }
+        if (this.state.editorPath && !getNode(this.state.tree, this.state.editorPath)) {
+            this.state.editorPath = '';
+            this.state.editor = { type: 'welcome', tab: 'shape' };
+        }
+        this.persistRoot();
+        showFloatingMessage('Script ran', 'success');
+        this.update({ modal: { ...modal, summary: modal.summary }, contextMenu: null });
     }
 
     openCaseTemplate() {
@@ -1631,6 +2220,36 @@ class JSONCreator {
         }
     }
 
+    async renderScriptPickerVisual() {
+        const picker = this.state.modal?.type === 'algset-script' ? this.state.modal.scriptPicker : null;
+        const container = this.root?.querySelector('#scriptLayerPickerInteractive');
+        if (!picker || picker.kind !== 'layer' || !container) return;
+        if (!this.shapeRenderPromise) this.shapeRenderPromise = ensureFeatureModules().catch(() => null);
+        await this.shapeRenderPromise;
+        if (!window.InteractiveScrambleRenderer) return;
+        const layer = picker.field === 'bottom-layer' ? 'bottom' : 'top';
+        const value = /^[0-9A-FECWXYZR]{12}$/i.test(picker.value || '') ? picker.value.toUpperCase() : DEFAULT_LAYER;
+        const colorScheme = this.getInteractiveColorScheme();
+        try {
+            const state = new window.InteractiveScrambleRenderer.InteractiveScrambleState(
+                layer === 'top' ? value : '',
+                layer === 'bottom' ? value : '',
+                colorScheme
+            );
+            state.onChange((nextState) => {
+                const nextValue = nextState.getText(layer);
+                if (!nextValue || nextValue.length !== 12) return;
+                picker.value = nextValue;
+                const input = this.root?.querySelector('#scriptLayerPickerInput');
+                if (input) input.value = nextValue;
+            });
+            container.innerHTML = window.InteractiveScrambleRenderer.createInteractiveSVG(state, { size: 240 });
+            window.InteractiveScrambleRenderer.setupInteractiveEvents(state, 'scriptLayerPickerInteractive');
+        } catch {
+            container.innerHTML = `<div style="padding:40px;color:var(--devtool-muted,#777);">Invalid layer input</div>`;
+        }
+    }
+
     getInteractiveColorScheme() {
         const base = window.InteractiveScrambleRenderer.DEFAULT_COLOR_SCHEME;
         if (AppState.settings.theme !== 'dark') return base;
@@ -1746,6 +2365,7 @@ class JSONCreator {
             this.state.expandedFolders.clear();
             this.state.caseTemplate = null;
             clearTemplate(this.state.activeRoot);
+            clearExpandedFolders(this.state.activeRoot);
             this.persistRoot();
             showFloatingMessage('Root reset successfully', 'success');
             this.closeModal(false);
@@ -1762,8 +2382,10 @@ class JSONCreator {
             this.state.selectedPath = '';
             this.state.editorPath = '';
             this.state.editor = { type: 'welcome', tab: 'shape' };
-            this.state.expandedFolders = new Set(collectFolders(this.state.tree).map((folder) => folder.path));
+            this.state.expandedFolders.clear();
             this.state.caseTemplate = null;
+            clearExpandedFolders('default');
+            this.saveExpandedFolderState();
             showFloatingMessage('All data has been reset', 'success');
             this.closeModal(false);
         });
@@ -1782,16 +2404,17 @@ class JSONCreator {
         const item = getNode(this.state.tree, path);
         const name = path ? getPathName(path) : this.state.activeRoot;
         if (!item) return;
-        if (isCase(item)) this.openRunModal({ [item.caseName]: item }, item.caseName);
-        else this.openRunModal(item, name);
+        const pathParts = splitPath(path);
+        if (isCase(item)) this.openRunModal({ [pathParts.at(-1) || item.caseName]: item }, item.caseName, pathParts.slice(0, -1));
+        else this.openRunModal(item, name, pathParts);
     }
 
     runJSON() {
         this.openRunModal(this.state.tree, this.state.activeRoot);
     }
 
-    openRunModal(data, name) {
-        const cases = collectCases(isCase(data) ? { [name]: data } : data);
+    openRunModal(data, name, basePath = []) {
+        const cases = collectCases(isCase(data) ? { [name]: data } : data, basePath);
         this.state.run = { name, cases, results: [], progress: 0, stopped: false, done: false, scrollTop: 0 };
         this.render();
         void this.generateRunResults();
@@ -1803,7 +2426,7 @@ class JSONCreator {
         if (!run.cases.length) {
             run.done = true;
             run.progress = 100;
-            this.render();
+            this.syncRunProgress();
             return;
         }
         const modules = await ensureFeatureModules();
@@ -1811,6 +2434,7 @@ class JSONCreator {
         for (let index = 0; index < RUN_COUNT; index += 1) {
             if (!this.state.run || this.state.run.stopped) break;
             const picked = run.cases[Math.floor(Math.random() * run.cases.length)];
+            let resultData;
             try {
                 const config = {
                     topLayer: picked.item.inputTop,
@@ -1832,9 +2456,9 @@ class JSONCreator {
                         }
                         break;
                     } catch (error) {
-                        const retry = error.message?.includes("Cannot read properties of undefined (reading 'shift')");
+                        const retry = isRecoverableSolverRandomizationError(error);
                         if (!retry || attempt === 9) {
-                            scramble = `Error: ${error.message}`;
+                            scramble = `Error: ${cleanSolverErrorMessage(error)}`;
                             break;
                         }
                         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -1863,7 +2487,7 @@ class JSONCreator {
                     )
                     : '';
 
-                run.results.push({
+                resultData = {
                     caseName: picked.item.caseName,
                     path: picked.labelPath,
                     scramble: formatScrambleDisplay(scramble),
@@ -1871,9 +2495,9 @@ class JSONCreator {
                     preAbf: `(${rul},${rdl})`,
                     equator: equatorLabel(generated.equator),
                     viz
-                });
+                };
             } catch (error) {
-                run.results.push({
+                resultData = {
                     caseName: picked.item.caseName,
                     path: picked.labelPath,
                     scramble: `Error: ${error.message}`,
@@ -1881,16 +2505,38 @@ class JSONCreator {
                     preAbf: '(-,-)',
                     equator: '-',
                     viz: ''
-                });
+                };
             }
+            run.results.push(resultData);
             run.progress = Math.round(((index + 1) / RUN_COUNT) * 100);
-            if ((index + 1) % 5 === 0 || index === RUN_COUNT - 1) this.render();
+            this.appendRunResult(resultData);
+            this.syncRunProgress();
             await new Promise((resolve) => setTimeout(resolve, 50));
         }
         if (this.state.run) {
             this.state.run.done = true;
-            this.render();
+            this.syncRunProgress();
         }
+    }
+
+    appendRunResult(result) {
+        const body = this.root?.querySelector('.run-modal-body');
+        if (!body) {
+            this.render();
+            return;
+        }
+        body.insertAdjacentHTML('beforeend', this.renderRunResult(result));
+    }
+
+    syncRunProgress() {
+        const run = this.state.run;
+        if (!run) return;
+        const fill = this.root?.querySelector('.progress-bar-fill');
+        const text = this.root?.querySelector('.progress-text');
+        const stop = this.root?.querySelector('[data-action="stop-run"]');
+        if (fill) fill.style.width = `${run.progress}%`;
+        if (text) text.textContent = `${run.results.length} / ${RUN_COUNT}`;
+        if (stop) stop.disabled = run.stopped || run.done;
     }
 
     stopRun() {

@@ -649,6 +649,11 @@ function createPieceSelectionModal() {
 }
 
 // === INTERACTIVE EVENT SETUP ===
+function getInteractiveRenderOptions(container) {
+    const size = Number(container?.dataset?.renderSize);
+    return { size: Number.isFinite(size) && size > 0 ? size : 200 };
+}
+
 function setupInteractiveEvents(state, containerId) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -741,7 +746,7 @@ function setupInteractiveEvents(state, containerId) {
             // Re-render immediately for snappy interaction
             const targetContainer = document.getElementById(scrollSwitchData.containerId);
             if (targetContainer) {
-                targetContainer.innerHTML = createInteractiveSVG(state, { size: 200 });
+                targetContainer.innerHTML = createInteractiveSVG(state, getInteractiveRenderOptions(targetContainer));
                 setupInteractiveEvents(state, scrollSwitchData.containerId);
             }
         }
@@ -803,7 +808,7 @@ function setupInteractiveEvents(state, containerId) {
                 // Re-render just THIS container
                 const targetContainer = document.getElementById(containerId);
                 if (targetContainer) {
-                    targetContainer.innerHTML = createInteractiveSVG(state, { size: 200 });
+                    targetContainer.innerHTML = createInteractiveSVG(state, getInteractiveRenderOptions(targetContainer));
                     setupInteractiveEvents(state, containerId);
                 }
             }
@@ -855,7 +860,7 @@ function setupInteractiveEvents(state, containerId) {
                 
                 const targetContainer = document.getElementById(containerId);
                 if (targetContainer) {
-                    targetContainer.innerHTML = createInteractiveSVG(state, { size: 200 });
+                    targetContainer.innerHTML = createInteractiveSVG(state, getInteractiveRenderOptions(targetContainer));
                     setupInteractiveEvents(state, containerId);
                 }
             }
@@ -938,7 +943,7 @@ function showPieceSelectionModal(state, position, layer, isCornerZone, x, y, con
                 
                 const container = document.getElementById(containerId);
                 if (container) {
-                    container.innerHTML = createInteractiveSVG(state, { size: 200 });
+                    container.innerHTML = createInteractiveSVG(state, getInteractiveRenderOptions(container));
                     setupInteractiveEvents(state, containerId);
                 }
             };

@@ -3,6 +3,8 @@ import { clone } from './model.js';
 const STORAGE_KEYS = Object.freeze({
     algorithmInputMode: 'algorithmInputMode',
     algorithmNotationType: 'algorithmNotationType',
+    expandedFoldersPrefix: 'jsonCreator_expandedFolders_',
+    lastAlgsetScript: 'jsonCreator_lastAlgsetScript',
     lastSelectedPath: 'jsonCreator_lastSelectedPath',
     lastSelectedRoot: 'jsonCreator_lastSelectedRoot',
     templatePrefix: 'caseTemplate_'
@@ -70,6 +72,18 @@ function clearTemplate(rootName) {
     removeKey(`${STORAGE_KEYS.templatePrefix}${rootName}`);
 }
 
+function loadExpandedFolders(rootName) {
+    return readJSON(`${STORAGE_KEYS.expandedFoldersPrefix}${rootName}`, null);
+}
+
+function saveExpandedFolders(rootName, paths) {
+    writeJSON(`${STORAGE_KEYS.expandedFoldersPrefix}${rootName}`, Array.isArray(paths) ? paths : []);
+}
+
+function clearExpandedFolders(rootName) {
+    removeKey(`${STORAGE_KEYS.expandedFoldersPrefix}${rootName}`);
+}
+
 function loadAlgorithmPreferences() {
     return {
         algorithmInputMode: readString(STORAGE_KEYS.algorithmInputMode, 'false') === 'true',
@@ -85,15 +99,28 @@ function saveAlgorithmNotationType(type) {
     writeString(STORAGE_KEYS.algorithmNotationType, type || 'normal');
 }
 
+function loadLastAlgsetScript() {
+    return readString(STORAGE_KEYS.lastAlgsetScript, '');
+}
+
+function saveLastAlgsetScript(script) {
+    writeString(STORAGE_KEYS.lastAlgsetScript, script || '');
+}
+
 export {
     STORAGE_KEYS,
+    clearExpandedFolders,
     clearTemplate,
     loadAlgorithmPreferences,
+    loadExpandedFolders,
+    loadLastAlgsetScript,
     loadSelection,
     loadTemplate,
     readJSON,
     saveAlgorithmInputMode,
     saveAlgorithmNotationType,
+    saveExpandedFolders,
+    saveLastAlgsetScript,
     saveSelection,
     saveTemplate,
     writeJSON

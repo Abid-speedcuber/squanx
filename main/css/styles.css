@@ -771,6 +771,7 @@ textarea.settings-input {
     justify-content: space-between;
     align-items: center;
     gap: 12px;
+    min-height: 46px;
     padding: 12px 16px;
     background: var(--case-bg);
     border: 1px solid var(--case-border);
@@ -782,15 +783,6 @@ textarea.settings-input {
 .algset-item.active {
     background: var(--case-hover-bg);
     border-color: var(--border-col);
-}
-
-.algset-remove-btn {
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .tree-view {

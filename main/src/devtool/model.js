@@ -1,3 +1,5 @@
+import { expandCompactAlgset, isCompactAlgset } from '../algsetCodec.js';
+
 const DEFAULT_LAYER = 'RRRRRRRRRRRR';
 
 const DEFAULT_CASE = Object.freeze({
@@ -127,6 +129,7 @@ function normalizeCase(name, value = {}) {
 }
 
 function normalizeTree(source = {}) {
+    source = expandCompactAlgset(source);
     if (!isObject(source)) return {};
     const tree = {};
     for (const [key, value] of Object.entries(source)) {
@@ -137,6 +140,7 @@ function normalizeTree(source = {}) {
 }
 
 function normalizeRoots(source, fallbackRoot) {
+    if (isCompactAlgset(source)) return { default: normalizeTree(source) };
     const input = isObject(source) && Object.keys(source).length ? source : { default: fallbackRoot || {} };
     const roots = {};
     for (const [name, tree] of Object.entries(input)) {
