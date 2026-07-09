@@ -690,6 +690,17 @@ body.theme-dark .script-ghost {
     gap: 8px;
 }
 
+.algset-script-help {
+    margin: 0;
+    font-size: 12px;
+    text-align: right;
+}
+
+.algset-script-help a {
+    color: var(--devtool-accent, #0078d4);
+    font-weight: 700;
+}
+
 .algset-script-summary {
     margin: 0;
     max-height: 190px;

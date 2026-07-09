@@ -83,6 +83,30 @@ body {
     --accent-hover: var(--button-col);
 }
 
+body.theme-dark,
+body.theme-dark * {
+    scrollbar-color: #2e6aa0 #071321;
+}
+
+body.theme-dark ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+body.theme-dark ::-webkit-scrollbar-track {
+    background: #071321;
+}
+
+body.theme-dark ::-webkit-scrollbar-thumb {
+    background: #2e6aa0;
+    border: 2px solid #071321;
+    border-radius: 8px;
+}
+
+body.theme-dark ::-webkit-scrollbar-thumb:hover {
+    background: #3f7fb8;
+}
+
 button,
 input,
 select,

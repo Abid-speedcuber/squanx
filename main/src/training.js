@@ -1,6 +1,8 @@
 import { ensureFeatureModules, openDevtoolFullscreen } from './moduleLoader.js';
 import { expandCompactAlgset } from './algsetCodec.js';
 
+const COMMAND_REFERENCE_URL = 'https://github.com/Abid-speedcuber/squanx/blob/ESmodule-build/docs/algset-script-command.md';
+
 // Application State
 const AppState = {
     selectedCases: [],
@@ -89,6 +91,13 @@ function formatScrambleDisplay(scramble) {
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function formatTrainingPathLabel(path, fallback = '') {
+    return String(path || '')
+        .split('.')
+        .filter(Boolean)
+        .join(' > ') || fallback || 'Unknown case';
 }
 
 function isRecoverableSolverRandomizationError(error) {
@@ -429,7 +438,7 @@ function renderApp() {
     const app = document.getElementById('app');
     const currentScramble = escapeHtml(AppState.currentScramble?.scramble || 'Scramble will show up here');
     const previousScramble = AppState.previousScramble
-        ? escapeHtml(`${AppState.previousScramble.scramble} (${AppState.previousScramble.caseName || 'Unknown case'})`)
+        ? escapeHtml(`${AppState.previousScramble.scramble} (${AppState.previousScramble.pathLabel || AppState.previousScramble.caseName || 'Unknown case'})`)
         : 'Last scramble will show up here';
     const activeAlgset = escapeHtml(AppState.activeTrainingJSON || 'Select Algset');
 
@@ -515,6 +524,7 @@ async function generateNewScramble() {
     }
 
     const randomCase = AppState.selectedCases[Math.floor(Math.random() * AppState.selectedCases.length)];
+    const pathLabel = formatTrainingPathLabel(randomCase._path, randomCase.caseName);
     
     try {
         const { generateHexState } = (await ensureFeatureModules()).hexState;
@@ -568,6 +578,7 @@ async function generateNewScramble() {
         AppState.currentScramble = {
             ...result, 
             caseName: randomCase.caseName, 
+            pathLabel,
             alg: randomCase.alg || '',
             scramble: formatScrambleDisplay(scramble)
         };
@@ -579,7 +590,8 @@ async function generateNewScramble() {
         AppState.currentScramble = {
             hexState: 'Error generating scramble', 
             scramble: 'Error: ' + error.message,
-            caseName: randomCase.caseName
+            caseName: randomCase.caseName,
+            pathLabel
         };
         renderApp();
     }
@@ -1031,6 +1043,19 @@ function renderAlgsetSelectorContent() {
 
     const importedAlgsets = getImportedTrainingAlgsetNames();
 
+    const importedMarkup = importedAlgsets.length ? `
+        <section class="algset-section">
+            <h3>My algsets</h3>
+            <div class="algset-list">
+                ${importedAlgsets.map(name => `
+                    <div class="algset-item ${name === AppState.activeTrainingJSON ? 'active' : ''}" onclick='selectImportedAlgset(${JSON.stringify(name)})' oncontextmenu='openAlgsetContextMenu(event, ${JSON.stringify(name)}, "imported")'>
+                        <span>${escapeHtml(name)}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </section>
+    ` : '';
+
     content.innerHTML = `
         <section class="algset-section">
             <h3>Default</h3>
@@ -1042,19 +1067,7 @@ function renderAlgsetSelectorContent() {
                 `).join('')}
             </div>
         </section>
-        <section class="algset-section">
-            <h3>Imported</h3>
-            <div class="algset-list">
-                ${importedAlgsets.length === 0 ?
-                    '<p class="empty-state">No imported algsets</p>' :
-                    importedAlgsets.map(name => `
-                        <div class="algset-item ${name === AppState.activeTrainingJSON ? 'active' : ''}" onclick='selectImportedAlgset(${JSON.stringify(name)})' oncontextmenu='openAlgsetContextMenu(event, ${JSON.stringify(name)}, "imported")'>
-                            <span>${escapeHtml(name)}</span>
-                        </div>
-                    `).join('')
-                }
-            </div>
-        </section>
+        ${importedMarkup}
         <div class="algset-import-footer">
             <button class="btn btn-primary" onclick="openImportAlgsetModal()">Add new algset</button>
         </div>
@@ -1630,6 +1643,7 @@ function openHelpModal() {
                 <section class="help-section">
                     <h3>Creating an algset</h3>
                     <p>Open the Devtool from the left rail. Build folders and cases there, or use Bulk Import for CSV/XLSX files. When the root is ready, use Extract JSON, Download for a file, or Train to send the current root straight into this trainer.</p>
+                    <p>For scripted algset creation, see the <a href="${COMMAND_REFERENCE_URL}" target="_blank" rel="noopener noreferrer">Algset Script command reference</a>.</p>
                 </section>
                 <section class="help-section">
                     <h3>Selecting cases</h3>

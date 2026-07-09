@@ -52,6 +52,7 @@ import {
 
 const RUN_COUNT = 100;
 const SQUANX_WORDMARK = '<span class="squanx-brand"><span class="squango-sq">Squan</span><span class="squango-go">X</span></span>';
+const COMMAND_REFERENCE_URL = 'https://github.com/Abid-speedcuber/squanx/blob/ESmodule-build/docs/algset-script-command.md';
 const SCRIPT_VALUE_PICKER_FIELDS = new Set(['top-layer', 'bottom-layer', 'parity', 'pre-abf', 'post-abf', 'rul', 'rdl', 'auf', 'adf']);
 const SCRIPT_PARITY_OPTIONS = [
     ['on', 'Overall No Parity'],
@@ -861,6 +862,7 @@ class JSONCreator {
                 <div class="modal-content devtool-modal algset-script-modal">
                     <div class="modal-header"><h2>Run Script: ${escapeHtml(modal.scopeLabel || 'root')}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body algset-script-body">
+                        <p class="algset-script-help"><a href="${COMMAND_REFERENCE_URL}" target="_blank" rel="noopener noreferrer">Command reference</a></p>
                         <div class="algset-script-editor">
                             <pre id="algsetScriptHighlight" class="algset-script-highlight" aria-hidden="true">${highlighted}</pre>
                             <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="if case-name contains &quot;Jf/&quot; in here append top-layer=W11W55Y33W77.">${escapeHtml(script)}</textarea>
