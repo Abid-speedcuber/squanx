@@ -565,7 +565,7 @@ body.theme-light .squango-go {
 .settings-popup-inner,
 .hint-popup-inner,
 .help-popup-inner {
-    width: min(92vw, 520px);
+    width: min(92vw, 760px);
 }
 
 .settings-body {
@@ -916,12 +916,51 @@ textarea.settings-input {
 }
 
 .help-section + .help-section {
-    margin-top: 18px;
+    margin-top: 22px;
 }
 
 .help-section h3 {
     margin-bottom: 6px;
     color: var(--text-strong);
+}
+
+.help-section p + p,
+.help-section p + ul,
+.help-section ul + p {
+    margin-top: 8px;
+}
+
+.help-section ul {
+    display: grid;
+    gap: 7px;
+    padding-left: 20px;
+    color: var(--text-soft);
+}
+
+.help-content a {
+    color: color-mix(in srgb, var(--border-col) 78%, var(--text-strong));
+    font-weight: 700;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+}
+
+.help-content a:hover {
+    color: var(--text-strong);
+}
+
+.help-content code,
+.help-content kbd {
+    background: var(--field-bg);
+    border: 1px solid var(--divider-soft);
+    border-radius: 5px;
+    color: var(--text-strong);
+    font-family: "Courier New", monospace;
+    font-size: 0.88em;
+    padding: 1px 5px;
+}
+
+.help-content code {
+    overflow-wrap: anywhere;
 }
 
 .hint-body pre {

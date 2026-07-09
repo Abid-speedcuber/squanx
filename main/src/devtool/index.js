@@ -422,6 +422,7 @@ class JSONCreator {
                     <button class="json-creator-icon-btn" data-action="open-data-management" title="Data Management"><img src="viz/data.svg" width="16" height="16" alt=""></button>
                     <button class="json-creator-icon-btn" data-action="extract-json" title="Extract JSON"><img src="viz/extract.svg" width="16" height="16" alt=""></button>
                     <button class="json-creator-icon-btn" data-action="run-root" title="Run"><img src="viz/run.svg" width="16" height="16" alt=""></button>
+                    <button class="json-creator-icon-btn" data-action="open-devtool-help" title="Help"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.7 2.7 0 0 1 5.1 1.3c0 1.8-1.5 2.4-2.3 3-.5.4-.6.8-.6 1.4"/><path d="M12 18h.01"/></svg></button>
                     <button class="json-creator-icon-btn" data-action="close" title="Quit"><img src="viz/exit.svg" width="16" height="16" alt=""></button>
                 </div>
             </div>
@@ -834,13 +835,103 @@ class JSONCreator {
                 <div class="modal-content devtool-modal devtool-help-content">
                     <div class="modal-header"><h2>SquanX Algset Devtool Help</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body help-content">
-                        <section class="help-section"><h3>Roots</h3><p>A root is a complete algset workspace. Use the Root selector above the tree to switch roots, create another root, or right-click a root in the dropdown to rename, reset, export, or delete it.</p></section>
-                        <section class="help-section"><h3>Tree editing</h3><p>Use the sidebar toolbar or right-click menu to create folders and cases. New items rename directly in the tree. Press Enter to save a rename, Escape to cancel, or click away to accept it.</p></section>
-                        <section class="help-section"><h3>Shape input</h3><p>The two layer fields store the 12-character layer state. Click the interactive image to cycle pieces, or right-click a slot to open the piece selector. Apply reads the algorithm input and updates the shape; Apply & Append also appends it to the Algorithm hint field.</p></section>
-                        <section class="help-section"><h3>Additional information</h3><p>Middle layer, parity, post-ABF, pre-ABF, constraints, and Algorithm describe how trainer scrambles are generated. Algorithm supports multiple lines and appears from the trainer light bulb.</p></section>
-                        <section class="help-section"><h3>Templates</h3><p>Case Template defines defaults for future cases. It has its own editor frame and bottom save/reset bar so it is visually separate from normal case editing.</p></section>
-                        <section class="help-section"><h3>Bulk import</h3><p>Bulk Import accepts CSV or XLSX. Column 1 is the case name. Column 3 is the algorithm. The importer parses normal notation, karnotation, and shorthand through the same parser used by shape input.</p></section>
-                        <section class="help-section"><h3>Running and training</h3><p>Run validates generated cases in-place. Extract JSON opens the raw root export. Copy copies it, Download saves it, and Train imports the current root into trainer mode, selects it, selects all cases, and switches back to the trainer.</p></section>
+                        <section class="help-section">
+                            <h3>Roots</h3>
+                            <p>A root is one complete algset workspace. If you are building EOCP, PLL+1, and PBL, each of those can live as a separate root. The active root name is shown above the tree.</p>
+                            <ul>
+                                <li>Click the Root button to switch roots or create a new root.</li>
+                                <li>Right-click a root in the root dropdown to rename, export, reset, or delete it.</li>
+                                <li>Deleting the last root automatically creates a fresh default root, so the devtool is never left rootless.</li>
+                                <li>Switching roots loads that root's saved tree, selection, template, and folder expansion state.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Tree Editing</h3>
+                            <p>The left tree is folders and cases. Creating inside a selected folder puts the new item inside that folder. Creating while a case is selected puts the new item beside that case.</p>
+                            <ul>
+                                <li>Toolbar: New Case, New Folder, Copy, Paste, Delete, and Extra Tools.</li>
+                                <li>Right-click the root area, a folder, or a case to open the context menu for the item under the pointer.</li>
+                                <li>Double-click the text of an item to rename it. Folder and case icons are safe to click without entering rename.</li>
+                                <li>During rename, Enter saves, Escape cancels, and clicking away accepts. If the item was just created, Escape removes it again.</li>
+                                <li>Move Up and Move Down are in the case/folder context menu.</li>
+                                <li>Delete asks for confirmation. For batch deletes, use script commands.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Keyboard Shortcuts</h3>
+                            <ul>
+                                <li><kbd>n</kbd>: create a new folder when no input, modal, context menu, or run is active.</li>
+                                <li><kbd>=</kbd>: create a new case under the current folder or beside the current case.</li>
+                                <li><kbd>Delete</kbd>: delete the case currently open in the editor, or the selected tree item if no case editor is active.</li>
+                                <li><kbd>Ctrl/Cmd+C</kbd>: copy the selected tree item to the app clipboard.</li>
+                                <li><kbd>Ctrl/Cmd+V</kbd>: paste the app clipboard. If the app clipboard is empty, SquanX tries to read JSON from the system clipboard.</li>
+                                <li><kbd>Ctrl/Cmd+N</kbd>: create a new case.</li>
+                                <li><kbd>Ctrl/Cmd+Shift+N</kbd>: create a new folder.</li>
+                                <li><kbd>Escape</kbd>: close the current context menu or modal.</li>
+                                <li>Algorithm input: <kbd>Enter</kbd> applies the algorithm; <kbd>Shift+Enter</kbd> applies it and appends it to the algorithm hint.</li>
+                                <li>Script editor: <kbd>Tab</kbd> accepts inline autocomplete or opens value pickers after fields like <code>top-layer=</code>; <kbd>Ctrl/Cmd+Enter</kbd> runs the script.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Copy And Paste</h3>
+                            <p>There are two paste paths. The normal Copy/Paste toolbar and <kbd>Ctrl/Cmd+C</kbd>/<kbd>Ctrl/Cmd+V</kbd> use SquanX's internal item clipboard. Copy JSON to Clipboard writes raw JSON for the selected case or folder to the system clipboard.</p>
+                            <ul>
+                                <li>Copy copies the selected case or folder for use inside the current root.</li>
+                                <li>Paste inserts a unique-named copy into the selected folder, or beside the selected case.</li>
+                                <li>If you press <kbd>Ctrl/Cmd+V</kbd> with no internal item copied, SquanX tries to import JSON from the system clipboard.</li>
+                                <li>Browser clipboard permission can affect system clipboard paste; the internal copy/paste path does not need that permission.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Shape Input</h3>
+                            <p>The two layer fields store 12-character Square-1 layer strings. Click the interactive image to cycle pieces, or right-click a slot to open the piece selector. The Algorithm input can also update the shape from a typed algorithm.</p>
+                            <ul>
+                                <li>Apply reads the algorithm input and updates the current shape.</li>
+                                <li>Apply &amp; Append updates the shape and appends the algorithm text to the case's Algorithm field.</li>
+                                <li>Reset layer buttons restore a layer to the default all-R state.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Additional Information</h3>
+                            <p>Middle layer, parity, post-ABF, pre-ABF, constraints, and Algorithm describe how trainer scrambles are generated. Algorithm supports multiple lines and appears from the trainer light bulb.</p>
+                            <ul>
+                                <li>Post-ABF values control final top and bottom layer adjustment after generation.</li>
+                                <li>Pre-ABF values control allowed setup adjustment before generation.</li>
+                                <li>Constraints limit which pieces are allowed at specific positions.</li>
+                                <li>Use the info buttons in this tab for field-specific notes.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Templates</h3>
+                            <p>Case Template defines defaults for future cases. It has its own editor frame and save/reset controls so template edits are visually separate from normal case edits.</p>
+                            <ul>
+                                <li>New cases are created from the current template.</li>
+                                <li>Right-click a case and choose Set as Template to turn an existing case into the template.</li>
+                                <li>Reset Case restores a case from the current template.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Bulk Import</h3>
+                            <p>Bulk Import accepts CSV or XLSX. Column 1 is the case name. Column 3 is the algorithm. The importer parses normal notation, karnotation, and shorthand through the same parser used by shape input.</p>
+                            <ul>
+                                <li>Use Bulk Import from the root or folder context menu to choose the import target.</li>
+                                <li>Imported cases are created under the selected folder or root.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Scripts</h3>
+                            <p>Scripts are manually run batch edits. Open Run Script from the root or folder context menu. The script scope starts at the item where you opened it, and the last script is remembered.</p>
+                            <ul>
+                                <li>Fast delete example: <code>delete if case-name contains "temp" in here.</code></li>
+                                <li>Delete a folder by path: <code>delete folder ["3-3", "J/J"].</code></li>
+                                <li>Batch set a layer: <code>if case-name split "/" left is "Jf" in here append top-layer=W11W55Y33W77.</code></li>
+                                <li>Use <a href="${COMMAND_REFERENCE_URL}" target="_blank" rel="noopener noreferrer">the full command reference</a> for targets, execute commands, create commands, delete commands, and value picker syntax.</li>
+                            </ul>
+                        </section>
+                        <section class="help-section">
+                            <h3>Running And Training</h3>
+                            <p>Run validates generated cases in-place. Extract JSON opens the compact root export. Copy copies it, Download saves it, and Train imports the current root into trainer mode, selects it, selects all cases, and switches back to the trainer.</p>
+                        </section>
                     </div>
                 </div>
             </div>

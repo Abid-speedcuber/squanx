@@ -1636,22 +1636,24 @@ function openHelpModal() {
             </div>
             <div class="modal-body help-content">
                 <section class="help-section">
-                    <h3>Getting an algset into the trainer</h3>
-                    <p>Use Select Algset to choose one of your imported algsets. If you have never opened that algset before, SquanX selects every case in it automatically. After that, your exact selected cases are remembered per algset.</p>
-                    <p>To import a JSON file, open Select Algset, press Import Algset, then paste JSON or drag a file onto the import box. The imported algset becomes active immediately and all of its cases are selected.</p>
+                    <h3>Trainer</h3>
+                    <p>The trainer is for selecting an algset, choosing cases, generating scrambles, timing solves, and reviewing hints. Use the algset selector in the top bar to choose EOCP or one of your own algsets. The first time an algset opens, every case is selected; after that, SquanX remembers your selected cases per algset.</p>
+                    <p>Open Case selector from the rail to choose cases. Folder checkboxes select or deselect everything inside that folder, individual case checkboxes autosave immediately, and expanded folders are remembered.</p>
+                    <p>Use Add new algset from the algset selector to import a JSON file by paste or drag-and-drop. Imported algsets appear under My algsets.</p>
                 </section>
                 <section class="help-section">
-                    <h3>Creating an algset</h3>
-                    <p>Open the Devtool from the left rail. Build folders and cases there, or use Bulk Import for CSV/XLSX files. When the root is ready, use Extract JSON, Download for a file, or Train to send the current root straight into this trainer.</p>
-                    <p>For scripted algset creation, see the <a href="${COMMAND_REFERENCE_URL}" target="_blank" rel="noopener noreferrer">Algset Script command reference</a>.</p>
+                    <h3>Devtool</h3>
+                    <p>The devtool is the algset creator. Open it from the rail to create roots, folders, cases, templates, scripts, bulk imports, and JSON exports.</p>
+                    <p>A root is one complete algset workspace. Use the Root dropdown above the tree to switch roots. Right-click roots, folders, or cases for the full action menu: rename, run, copy, paste, export JSON, move, reset, delete, and script actions where they apply.</p>
+                    <p>The devtool has its own Help menu with the detailed shortcut and workflow reference. For scripted algset creation, see the <a href="${COMMAND_REFERENCE_URL}" target="_blank" rel="noopener noreferrer">Algset Script command reference</a>.</p>
                 </section>
                 <section class="help-section">
-                    <h3>Selecting cases</h3>
-                    <p>The case selector remembers expanded folders. Folder checkboxes select or deselect everything inside that folder. Individual case checkboxes autosave instantly; there is no separate save button.</p>
-                </section>
-                <section class="help-section">
-                    <h3>Data backup</h3>
+                    <h3>Backups</h3>
                     <p>Use the import/export buttons at the bottom of the rail to move all app data at once, including trainer algsets, selected cases, devtool roots, templates, settings, and session times.</p>
+                </section>
+                <section class="help-section">
+                    <h3>Where Things Go</h3>
+                    <p>Train in the devtool sends the current root straight to the trainer. Extract JSON shows the compact export for the current root. Download saves that export as a file. Copy copies the export text.</p>
                 </section>
             </div>
         </div>
