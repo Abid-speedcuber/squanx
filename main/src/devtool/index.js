@@ -1,5 +1,5 @@
 import { ensureFeatureModules, ensureXlsxScript } from '../moduleLoader.js';
-import { AppState, DEFAULT_ALGSET, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveLastScreen } from '../training.js';
+import { AppState, DEFAULT_ALGSET, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveDevelopingRoot, saveLastScreen } from '../training.js';
 import { stringifyCompactAlgset } from '../algsetCodec.js';
 import {
     DEFAULT_LAYER,
@@ -360,9 +360,9 @@ class JSONCreator {
 
     persistRoot() {
         if (!this.state.activeRoot) return;
-        AppState.developingJSONs[this.state.activeRoot] = clone(this.state.tree);
+        AppState.developingJSONs[this.state.activeRoot] = this.state.tree;
         this.saveExpandedFolderState();
-        saveDevelopingJSONs();
+        saveDevelopingRoot(this.state.activeRoot, this.state.tree);
     }
 
     loadExpandedFolderState(rootName, tree) {
@@ -800,7 +800,7 @@ class JSONCreator {
                 <div class="modal-content devtool-modal import-devtool-content">
                     <div class="modal-header"><h2>Bulk Import</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body">
-                        <p>First column: case name. Third column: algorithm. Normal notation, karnotation, and shorthand are accepted automatically.</p>
+                        <p>First column: case name. Second column: input algorithm. Third column: optional hint algorithm. Normal notation, karnotation, and shorthand are accepted automatically.</p>
                         <label class="devtool-file-drop" data-file-target="bulkImportFile">
                             <span class="devtool-file-drop-title">Drop CSV/XLSX here</span>
                             <span class="devtool-file-drop-subtitle">or choose a file</span>
@@ -912,7 +912,7 @@ class JSONCreator {
                         </section>
                         <section class="help-section">
                             <h3>Bulk Import</h3>
-                            <p>Bulk Import accepts CSV or XLSX. Column 1 is the case name. Column 3 is the algorithm. The importer parses normal notation, karnotation, and shorthand through the same parser used by shape input.</p>
+                            <p>Bulk Import accepts CSV or XLSX. Column 1 is the case name. Column 2 is the input algorithm. Column 3 is the optional hint algorithm. The importer parses normal notation, karnotation, and shorthand through the same parser used by shape input.</p>
                             <ul>
                                 <li>Use Bulk Import from the root or folder context menu to choose the import target.</li>
                                 <li>Imported cases are created under the selected folder or root.</li>
@@ -2409,7 +2409,8 @@ class JSONCreator {
             let failed = 0;
             for (const row of rows) {
                 const caseName = String(row[0] || '').trim();
-                const algorithm = String(row[2] || '').trim();
+                const algorithm = String(row[1] || '').trim();
+                const hintAlgorithm = String(row[2] || algorithm).trim();
                 if (!caseName || !algorithm) {
                     failed += 1;
                     continue;
@@ -2418,7 +2419,7 @@ class JSONCreator {
                     const hex = normalizeAlgorithmInput(algorithm, 'inverse');
                     const finalName = getUniqueName(target.folder, caseName);
                     target.folder[finalName] = createCaseFromTemplate(finalName, this.state.caseTemplate);
-                    target.folder[finalName].alg = algorithm;
+                    target.folder[finalName].alg = hintAlgorithm;
                     target.folder[finalName].inputTop = hex.tlHex;
                     target.folder[finalName].inputBottom = hex.blHex;
                     success += 1;
