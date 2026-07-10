@@ -1,5 +1,14 @@
 import { ensureFeatureModules, openDevtoolFullscreen } from './moduleLoader.js';
 import { expandCompactAlgset } from './algsetCodec.js';
+import {
+    loadLargeValues,
+    readLocalJSON,
+    readLocalString,
+    saveLargeValue,
+    saveLargeValues,
+    writeLocalJSON,
+    writeLocalString
+} from './persistence.js';
 
 const COMMAND_REFERENCE_URL = 'https://github.com/Abid-speedcuber/squanx/blob/ESmodule-build/docs/algset-script-command.md';
 
@@ -15,6 +24,7 @@ const AppState = {
     timerStart: 0,
     timerElapsed: 0,
     holdStart: 0,
+    removeLastConsumedKey: '',
     trainingJSONs: {}, // Multiple training JSONs: { name: data }
     activeTrainingJSON: null, // Currently selected training JSON
     developingJSONs: {}, // Multiple developing JSONs for JSON creator
@@ -132,10 +142,17 @@ const DEFAULT_ALGSET = {
 };
 
 const DEFAULT_TRAINING_ALGSETS = [
+    { file: 'pll-plus-1.json', name: 'Lin- PLL+1', label: 'Lin- PLL+1', author: 'Amalogu' },
+    { file: 'SB.json', name: 'Lin- SB', label: 'Lin- SB', author: 'Amalogu' },
     { file: 'EOCP.json', name: 'EOCP', label: 'EOCP', author: 'Abid' }
 ];
 
 const DEFAULT_ALGSET_BASE_PATH = './default-algset/';
+const DEVELOPING_ROOT_NAMES_KEY = 'sq1DevelopingRootNames';
+
+function getDevelopingRootKey(name) {
+    return `sq1DevelopingRoot:${name}`;
+}
 
 function isDefaultTrainingAlgset(name) {
     return DEFAULT_TRAINING_ALGSETS.some((item) => item.name === name);
@@ -174,22 +191,17 @@ async function ensureDefaultTrainingAlgset(name) {
     return AppState.trainingJSONs[name];
 }
 
-// Load training JSONs from localStorage
-function loadTrainingJSONs() {
-    const saved = localStorage.getItem('sq1TrainingJSONs');
-    if (saved) {
-        try {
-            AppState.trainingJSONs = JSON.parse(saved);
-            for (const [name, data] of Object.entries(AppState.trainingJSONs)) {
-                AppState.trainingJSONs[name] = expandCompactAlgset(data);
-            }
-        } catch (e) {
-            console.error('Error loading training JSONs:', e);
-            AppState.trainingJSONs = {};
+// Load training JSONs from IndexedDB, with one-time localStorage migration.
+function loadTrainingJSONs(persisted = {}) {
+    const saved = persisted.sq1TrainingJSONs;
+    if (saved && typeof saved === 'object') {
+        AppState.trainingJSONs = saved;
+        for (const [name, data] of Object.entries(AppState.trainingJSONs)) {
+            AppState.trainingJSONs[name] = expandCompactAlgset(data);
         }
     }
 
-    const activeJSON = localStorage.getItem('sq1ActiveTrainingJSON');
+    const activeJSON = readLocalString('sq1ActiveTrainingJSON', '');
     if (activeJSON && AppState.trainingJSONs[activeJSON]) {
         AppState.activeTrainingJSON = activeJSON;
     } else if (Object.keys(AppState.trainingJSONs).length > 0) {
@@ -197,11 +209,11 @@ function loadTrainingJSONs() {
     }
 }
 
-// Save training JSONs to localStorage
+// Save training JSONs off the UI thread.
 function saveTrainingJSONs() {
-    localStorage.setItem('sq1TrainingJSONs', JSON.stringify(AppState.trainingJSONs));
+    saveLargeValue('sq1TrainingJSONs', AppState.trainingJSONs);
     if (AppState.activeTrainingJSON) {
-        localStorage.setItem('sq1ActiveTrainingJSON', AppState.activeTrainingJSON);
+        writeLocalString('sq1ActiveTrainingJSON', AppState.activeTrainingJSON);
     }
 }
 
@@ -247,51 +259,59 @@ function importTrainingJSONData(name, data, options = {}) {
     saveSelectedCases();
 }
 
-// Load developing JSONs from localStorage
-function loadDevelopingJSONs() {
-    const saved = localStorage.getItem('sq1DevelopingJSONs');
-    if (saved) {
-        try {
-            AppState.developingJSONs = JSON.parse(saved);
-        } catch (e) {
-            console.error('Error loading developing JSONs:', e);
-            AppState.developingJSONs = { 'default': DEFAULT_ALGSET };
+// Load developing roots from per-root IndexedDB records, with legacy fallback.
+async function loadDevelopingJSONs(persisted = {}) {
+    const rootNames = Array.isArray(persisted[DEVELOPING_ROOT_NAMES_KEY]) ? persisted[DEVELOPING_ROOT_NAMES_KEY] : null;
+    if (rootNames?.length) {
+        const rootValues = await loadLargeValues(rootNames.map(getDevelopingRootKey));
+        AppState.developingJSONs = {};
+        for (const rootName of rootNames) {
+            const rootValue = rootValues[getDevelopingRootKey(rootName)];
+            if (rootValue && typeof rootValue === 'object') AppState.developingJSONs[rootName] = rootValue;
         }
-    } else {
-        AppState.developingJSONs = { 'default': DEFAULT_ALGSET };
+    } else if (persisted.sq1DevelopingJSONs && typeof persisted.sq1DevelopingJSONs === 'object') {
+        AppState.developingJSONs = persisted.sq1DevelopingJSONs;
+        saveDevelopingJSONs();
     }
 
-    const activeRoot = localStorage.getItem('sq1ActiveDevelopingJSON');
+    if (!Object.keys(AppState.developingJSONs).length) {
+        AppState.developingJSONs = { 'default': DEFAULT_ALGSET };
+        saveDevelopingJSONs();
+    }
+
+    const activeRoot = readLocalString('sq1ActiveDevelopingJSON', '');
     if (activeRoot && AppState.developingJSONs[activeRoot]) {
         AppState.activeDevelopingJSON = activeRoot;
     }
 }
 
-// Save developing JSONs to localStorage
+// Save all developing roots. Prefer saveDevelopingRoot for high-frequency edits.
 function saveDevelopingJSONs() {
-    localStorage.setItem('sq1DevelopingJSONs', JSON.stringify(AppState.developingJSONs));
-    localStorage.setItem('sq1ActiveDevelopingJSON', AppState.activeDevelopingJSON);
+    const rootNames = Object.keys(AppState.developingJSONs);
+    const values = Object.fromEntries(rootNames.map((name) => [getDevelopingRootKey(name), AppState.developingJSONs[name]]));
+    values[DEVELOPING_ROOT_NAMES_KEY] = rootNames;
+    saveLargeValues(values);
+    writeLocalString('sq1ActiveDevelopingJSON', AppState.activeDevelopingJSON);
 }
 
-// Load selected cases from localStorage
-function loadSelectedCases() {
-    const savedByAlgset = localStorage.getItem('sq1SelectedCasesByAlgset');
-    if (savedByAlgset) {
-        try {
-            AppState.selectedCasesByAlgset = JSON.parse(savedByAlgset) || {};
-        } catch (e) {
-            console.error('Error loading selected cases by algset:', e);
-            AppState.selectedCasesByAlgset = {};
-        }
+function saveDevelopingRoot(rootName = AppState.activeDevelopingJSON, tree = AppState.developingJSONs[rootName]) {
+    if (!rootName || !tree) return;
+    AppState.developingJSONs[rootName] = tree;
+    saveLargeValues({
+        [getDevelopingRootKey(rootName)]: tree,
+        [DEVELOPING_ROOT_NAMES_KEY]: Object.keys(AppState.developingJSONs)
+    });
+    writeLocalString('sq1ActiveDevelopingJSON', AppState.activeDevelopingJSON);
+}
+
+// Load selected cases from IndexedDB.
+function loadSelectedCases(persisted = {}) {
+    if (persisted.sq1SelectedCasesByAlgset && typeof persisted.sq1SelectedCasesByAlgset === 'object') {
+        AppState.selectedCasesByAlgset = persisted.sq1SelectedCasesByAlgset || {};
     }
 
-    const legacySaved = localStorage.getItem('sq1SelectedCases');
-    if (legacySaved && Object.keys(AppState.selectedCasesByAlgset).length === 0 && AppState.activeTrainingJSON) {
-        try {
-            AppState.selectedCasesByAlgset[AppState.activeTrainingJSON] = JSON.parse(legacySaved);
-        } catch (e) {
-            console.error('Error loading selected cases:', e);
-        }
+    if (Array.isArray(persisted.sq1SelectedCases) && Object.keys(AppState.selectedCasesByAlgset).length === 0 && AppState.activeTrainingJSON) {
+        AppState.selectedCasesByAlgset[AppState.activeTrainingJSON] = persisted.sq1SelectedCases;
     }
 
     if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
@@ -299,73 +319,57 @@ function loadSelectedCases() {
 
 // Load last screen state
 function loadLastScreen() {
-    const lastScreen = localStorage.getItem('sq1LastScreen');
+    const lastScreen = readLocalString('sq1LastScreen', '');
     return lastScreen || 'training';
 }
 
 // Save last screen state
 function saveLastScreen(screen) {
-    localStorage.setItem('sq1LastScreen', screen);
+    writeLocalString('sq1LastScreen', screen);
 }
 
-// Save selected cases to localStorage
+// Save selected cases off the UI thread.
 function saveSelectedCases() {
     if (AppState.activeTrainingJSON) {
         AppState.selectedCasesByAlgset[AppState.activeTrainingJSON] = AppState.selectedCases;
     }
-    localStorage.setItem('sq1SelectedCasesByAlgset', JSON.stringify(AppState.selectedCasesByAlgset));
-    localStorage.setItem('sq1SelectedCases', JSON.stringify(AppState.selectedCases));
+    saveLargeValues({
+        sq1SelectedCasesByAlgset: AppState.selectedCasesByAlgset,
+        sq1SelectedCases: AppState.selectedCases
+    });
 }
 
-function loadCaseTreeExpandedState() {
-    const saved = localStorage.getItem('sq1CaseTreeExpandedByAlgset');
-    if (!saved) return;
-    try {
-        AppState.caseTreeExpandedByAlgset = JSON.parse(saved) || {};
-    } catch (e) {
-        console.error('Error loading case tree expanded state:', e);
-        AppState.caseTreeExpandedByAlgset = {};
+function loadCaseTreeExpandedState(persisted = {}) {
+    if (persisted.sq1CaseTreeExpandedByAlgset && typeof persisted.sq1CaseTreeExpandedByAlgset === 'object') {
+        AppState.caseTreeExpandedByAlgset = persisted.sq1CaseTreeExpandedByAlgset || {};
     }
 }
 
 function saveCaseTreeExpandedState() {
-    localStorage.setItem('sq1CaseTreeExpandedByAlgset', JSON.stringify(AppState.caseTreeExpandedByAlgset));
+    saveLargeValue('sq1CaseTreeExpandedByAlgset', AppState.caseTreeExpandedByAlgset);
 }
 
-// Load session times from localStorage
-function loadSessionTimes() {
-    const saved = localStorage.getItem('sq1SessionTimes');
-    if (saved) {
-        try {
-            AppState.sessionTimes = JSON.parse(saved);
-        } catch (e) {
-            console.error('Error loading session times:', e);
-            AppState.sessionTimes = {};
-        }
+// Load session times from IndexedDB.
+function loadSessionTimes(persisted = {}) {
+    if (persisted.sq1SessionTimes && typeof persisted.sq1SessionTimes === 'object') {
+        AppState.sessionTimes = persisted.sq1SessionTimes;
     }
 }
 
-// Save session times to localStorage
+// Save session times off the UI thread.
 function saveSessionTimes() {
-    localStorage.setItem('sq1SessionTimes', JSON.stringify(AppState.sessionTimes));
+    saveLargeValue('sq1SessionTimes', AppState.sessionTimes);
 }
 
 // Load settings from localStorage
 function loadSettings() {
-    const saved = localStorage.getItem('sq1Settings');
-    if (saved) {
-        try {
-            const settings = JSON.parse(saved);
-            AppState.settings = { ...AppState.settings, ...settings };
-        } catch (e) {
-            console.error('Error loading settings:', e);
-        }
-    }
+    const settings = readLocalJSON('sq1Settings', null);
+    if (settings) AppState.settings = { ...AppState.settings, ...settings };
 }
 
 // Save settings to localStorage
 function saveSettings() {
-    localStorage.setItem('sq1Settings', JSON.stringify(AppState.settings));
+    writeLocalJSON('sq1Settings', AppState.settings);
 }
 
 // Apply theme to body
@@ -375,12 +379,13 @@ function applyTheme() {
 
 // Initialize app
 async function initApp() {
-    loadTrainingJSONs();
-    loadDevelopingJSONs();
-    loadCaseTreeExpandedState();
-    loadSelectedCases();
-    loadSessionTimes();
     loadSettings();
+    const persisted = await loadLargeValues();
+    loadTrainingJSONs(persisted);
+    await loadDevelopingJSONs(persisted);
+    loadCaseTreeExpandedState(persisted);
+    loadSelectedCases(persisted);
+    loadSessionTimes(persisted);
     applyTheme();
     
     const lastScreen = loadLastScreen();
@@ -406,6 +411,29 @@ function getInitialTimerDisplay() {
         }
     }
     return '0.00';
+}
+
+function getScrambleCaseKey(scramble) {
+    if (!scramble) return '';
+    const jsonName = scramble._jsonName || AppState.activeTrainingJSON || '';
+    const path = scramble._path || '';
+    if (path) return `${jsonName}:${path}`;
+    return `${jsonName}:name:${scramble.caseName || ''}`;
+}
+
+function getSelectedCaseKey(item) {
+    if (!item) return '';
+    const jsonName = item._jsonName || AppState.activeTrainingJSON || '';
+    const path = item._path || '';
+    if (path) return `${jsonName}:${path}`;
+    return `${jsonName}:name:${item.caseName || ''}`;
+}
+
+function canRemoveLastSolve() {
+    const key = getScrambleCaseKey(AppState.previousScramble);
+    return Boolean(key)
+        && AppState.removeLastConsumedKey !== key
+        && AppState.selectedCases.some((item) => getSelectedCaseKey(item) === key);
 }
 
 function trainerIconSprite() {
@@ -441,6 +469,7 @@ function renderApp() {
         ? escapeHtml(`${AppState.previousScramble.scramble} (${AppState.previousScramble.pathLabel || AppState.previousScramble.caseName || 'Unknown case'})`)
         : 'Last scramble will show up here';
     const activeAlgset = escapeHtml(AppState.activeTrainingJSON || 'Select Algset');
+    const removeLastDisabled = canRemoveLastSolve() ? '' : 'disabled';
 
     app.innerHTML = `
         ${trainerIconSprite()}
@@ -482,7 +511,7 @@ function renderApp() {
                         </div>
                         <div class="scramble-controls">
                             <button class="bar-btn" id="prevScrambleBtn" ${AppState.previousScramble ? '' : 'disabled'}>← Previous</button>
-                            <button class="bar-btn" id="unselprev">Remove last</button>
+                            <button class="bar-btn" id="unselprev" ${removeLastDisabled}>Remove last</button>
                             <button class="bar-btn" id="nextScrambleBtn">Next →</button>
                             <button class="hint-btn" id="hintBtn" aria-label="Show hint">
                                 <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lightbulb"/></svg>
@@ -575,10 +604,13 @@ async function generateNewScramble() {
         
         if (AppState.currentScramble) AppState.scrambleHistory.push(AppState.currentScramble);
         AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
+        AppState.removeLastConsumedKey = '';
         AppState.currentScramble = {
             ...result, 
             caseName: randomCase.caseName, 
             pathLabel,
+            _path: randomCase._path,
+            _jsonName: randomCase._jsonName,
             alg: randomCase.alg || '',
             scramble: formatScrambleDisplay(scramble)
         };
@@ -587,11 +619,14 @@ async function generateNewScramble() {
         console.error('Error generating scramble:', error);
         if (AppState.currentScramble) AppState.scrambleHistory.push(AppState.currentScramble);
         AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
+        AppState.removeLastConsumedKey = '';
         AppState.currentScramble = {
             hexState: 'Error generating scramble', 
             scramble: 'Error: ' + error.message,
             caseName: randomCase.caseName,
-            pathLabel
+            pathLabel,
+            _path: randomCase._path,
+            _jsonName: randomCase._jsonName
         };
         renderApp();
     }
@@ -773,15 +808,27 @@ window.importAllAppData = function() {
 };
 
 function removeLastSolve() {
-    if (!AppState.selectedCases.length) {
-        showFloatingMessage('No selected case to remove', 'info');
+    const targetKey = getScrambleCaseKey(AppState.previousScramble);
+    if (!targetKey || AppState.removeLastConsumedKey === targetKey) {
+        renderApp();
         return;
     }
 
-    const removed = AppState.selectedCases.pop();
+    const previousCount = AppState.selectedCases.length;
+    const removedCase = AppState.selectedCases.find((item) => getSelectedCaseKey(item) === targetKey);
+    AppState.selectedCases = AppState.selectedCases.filter((item) => getSelectedCaseKey(item) !== targetKey);
+    AppState.removeLastConsumedKey = targetKey;
+    if (AppState.selectedCases.length === previousCount) {
+        renderApp();
+        return;
+    }
     saveSelectedCases();
-    showFloatingMessage(`Deselected ${removed.caseName || 'last case'}`, 'success');
-    void generateNewScramble();
+    if (AppState.selectedCases.length === 0) {
+        AppState.timerState = 'idle';
+        AppState.currentScramble = null;
+    }
+    showFloatingMessage(`Deselected ${removedCase?.caseName || AppState.previousScramble?.caseName || 'last case'}`, 'success');
+    renderApp();
 }
 
 // Timer handlers
@@ -1839,5 +1886,6 @@ export {
     generateNewScramble,
     setupEventListeners,
     saveDevelopingJSONs,
+    saveDevelopingRoot,
     saveLastScreen
 };

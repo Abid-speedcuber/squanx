@@ -40,7 +40,6 @@ function ensureFeatureModules() {
             import('./hexify.js'),
             import('./getSpecificHex.js'),
             import('./scrambleNormalizer.js'),
-            import('./unkarnify.js'),
             import('./scrambleGenner.js'),
             import('./draw-scramble.js'),
             import('./drawScramsInteractive.js')
@@ -48,7 +47,6 @@ function ensureFeatureModules() {
             hexify,
             hexState,
             scrambleNormalizer,
-            unkarnify,
             scrambleGenner,
             drawScramble,
             interactiveScramble
@@ -58,8 +56,7 @@ function ensureFeatureModules() {
             hexState,
             interactiveScramble,
             scrambleGenner,
-            scrambleNormalizer,
-            unkarnify
+            scrambleNormalizer
         }));
     }
 

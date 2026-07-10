@@ -1,5 +1,5 @@
 import { ensureFeatureModules, ensureXlsxScript } from '../moduleLoader.js';
-import { AppState, DEFAULT_ALGSET, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveLastScreen } from '../training.js';
+import { AppState, DEFAULT_ALGSET, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveDevelopingRoot, saveLastScreen } from '../training.js';
 import { stringifyCompactAlgset } from '../algsetCodec.js';
 import {
     DEFAULT_LAYER,
@@ -272,6 +272,10 @@ class JSONCreator {
             renamingPath: '',
             renamingValue: '',
             newItemRenamePath: '',
+            renamingRoot: '',
+            renamingRootValue: '',
+            newRootRename: '',
+            shapeValueEdit: null,
             expandedFolders: new Set(),
             editor: { type: 'welcome', tab: 'shape' },
             clipboard: null,
@@ -360,9 +364,9 @@ class JSONCreator {
 
     persistRoot() {
         if (!this.state.activeRoot) return;
-        AppState.developingJSONs[this.state.activeRoot] = clone(this.state.tree);
+        AppState.developingJSONs[this.state.activeRoot] = this.state.tree;
         this.saveExpandedFolderState();
-        saveDevelopingJSONs();
+        saveDevelopingRoot(this.state.activeRoot, this.state.tree);
     }
 
     loadExpandedFolderState(rootName, tree) {
@@ -569,12 +573,20 @@ class JSONCreator {
 
     renderLayerInput(layer, value, prefix) {
         const title = layer === 'top' ? 'Top layer' : 'Bottom layer';
+        const layerValue = value || DEFAULT_LAYER;
+        const editing = this.state.shapeValueEdit?.layer === layer;
+        const editingValue = editing ? this.state.shapeValueEdit.value : layerValue;
         return `
             <div class="json-creator-section shape-layer-card">
                 <h4>${title}</h4>
-                <input id="${layer}LayerInput" class="shape-layer-input" data-layer="${layer}" data-prefix="${prefix}" maxlength="12" value="${escapeHtml(value || DEFAULT_LAYER)}" spellcheck="false">
+                <input id="${layer}LayerInput" class="shape-layer-input" data-layer="${layer}" data-prefix="${prefix}" maxlength="12" value="${escapeHtml(layerValue)}" spellcheck="false">
                 <button class="json-creator-icon-btn reset-layer-btn" data-action="reset-layer" data-layer="${layer}" title="Reset ${title}"><img src="viz/reset.svg" width="14" height="14" alt=""></button>
                 <div id="${layer}Interactive" class="shape-renderer" data-layer="${layer}" style="display:flex;justify-content:center;margin-top:12px;min-height:210px;"></div>
+                <div class="shape-layer-code-wrap">
+                    ${editing
+                        ? `<input id="shapeValueEditInput" class="shape-layer-code-input ${this.state.shapeValueEdit.invalid ? 'invalid' : ''}" data-action="shape-code-input" data-layer="${layer}" data-prefix="${prefix}" maxlength="12" value="${escapeHtml(editingValue)}" spellcheck="false">`
+                        : `<button class="shape-layer-code" data-action="copy-shape-value" data-layer="${layer}" data-prefix="${prefix}" title="Click to copy. Shift-click to edit.">${escapeHtml(layerValue)}</button>`}
+                </div>
             </div>
         `;
     }
@@ -744,9 +756,19 @@ class JSONCreator {
     renderRootSelector() {
         const names = Object.keys(AppState.developingJSONs);
         return `
+            <div class="root-selector-backdrop" data-action="root-selector-backdrop"></div>
             <div class="root-selector-modal">
                 <div id="rootList" class="root-list">
-                    ${names.map((root) => `<div class="root-list-item ${root === this.state.activeRoot ? 'active' : ''}" data-action="select-root" data-root="${escapeHtml(root)}">${escapeHtml(root)}</div>`).join('')}
+                    ${names.map((root) => {
+                        const renaming = this.state.renamingRoot === root;
+                        return `
+                            <div class="root-list-item ${root === this.state.activeRoot ? 'active' : ''} ${renaming ? 'editing' : ''}" data-action="select-root" data-root="${escapeHtml(root)}">
+                                ${renaming
+                                    ? `<input id="rootRenameInput" class="root-item-input" data-action="root-rename-input" value="${escapeHtml(this.state.renamingRootValue || root)}" spellcheck="false">`
+                                    : `<span class="root-item-text">${escapeHtml(root)}</span>`}
+                            </div>
+                        `;
+                    }).join('')}
                 </div>
                 <div class="root-selector-footer"><button class="json-creator-btn" data-action="add-root">New Root</button></div>
             </div>
@@ -800,7 +822,7 @@ class JSONCreator {
                 <div class="modal-content devtool-modal import-devtool-content">
                     <div class="modal-header"><h2>Bulk Import</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body">
-                        <p>First column: case name. Third column: algorithm. Normal notation, karnotation, and shorthand are accepted automatically.</p>
+                        <p>First column: case name. Second column: input algorithm. Third column: optional hint algorithm. Normal notation, karnotation, and shorthand are accepted automatically.</p>
                         <label class="devtool-file-drop" data-file-target="bulkImportFile">
                             <span class="devtool-file-drop-title">Drop CSV/XLSX here</span>
                             <span class="devtool-file-drop-subtitle">or choose a file</span>
@@ -912,7 +934,7 @@ class JSONCreator {
                         </section>
                         <section class="help-section">
                             <h3>Bulk Import</h3>
-                            <p>Bulk Import accepts CSV or XLSX. Column 1 is the case name. Column 3 is the algorithm. The importer parses normal notation, karnotation, and shorthand through the same parser used by shape input.</p>
+                            <p>Bulk Import accepts CSV or XLSX. Column 1 is the case name. Column 2 is the input algorithm. Column 3 is the optional hint algorithm. The importer parses normal notation, karnotation, and shorthand through the same parser used by shape input.</p>
                             <ul>
                                 <li>Use Bulk Import from the root or folder context menu to choose the import target.</li>
                                 <li>Imported cases are created under the selected folder or root.</li>
@@ -1103,6 +1125,16 @@ class JSONCreator {
             treeRename.focus();
             treeRename.select();
         }
+        const rootRename = this.root?.querySelector('#rootRenameInput');
+        if (rootRename) {
+            rootRename.focus();
+            rootRename.select();
+        }
+        const shapeValueEdit = this.root?.querySelector('#shapeValueEditInput');
+        if (shapeValueEdit) {
+            shapeValueEdit.focus();
+            shapeValueEdit.select();
+        }
         const runBody = this.root?.querySelector('.run-modal-body');
         if (runBody) {
             runBody.scrollTop = this.state.run?.scrollTop ?? options.runBodyScrollTop ?? 0;
@@ -1113,6 +1145,7 @@ class JSONCreator {
         const tree = this.root?.querySelector('#jsonCreatorTree');
         if (tree) tree.scrollTop = options.treeScrollTop ?? 0;
         if (treeRename && this.state.newItemRenamePath) this.scrollTreeRenameIntoView(treeRename);
+        this.positionRootSelector();
         this.positionContextMenu();
         this.renderShapeVisuals();
         this.renderScriptPickerVisual();
@@ -1144,8 +1177,13 @@ class JSONCreator {
             setTimeout(() => this.updateScriptCursorFromInput(target), 0);
         }
         if (this.state.contextMenu && !target.closest('[data-context-menu]')) {
-            this.update({ contextMenu: null, modal: this.state.modal });
+            const keepRootSelector = this.state.modal?.type === 'root-selector' && target.closest('.root-selector-modal');
+            this.update({ contextMenu: null, modal: keepRootSelector ? this.state.modal : null });
             return;
+        }
+        if (this.state.shapeValueEdit && !target.closest('#shapeValueEditInput')) {
+            this.commitShapeValueEdit();
+            if (this.state.shapeValueEdit) return;
         }
         const actionElement = target.closest('[data-action]');
         if (!actionElement || !this.root?.contains(actionElement)) {
@@ -1165,13 +1203,25 @@ class JSONCreator {
         if (action !== 'tree-rename-input' && this.state.renamingPath && !target.closest('#treeRenameInput')) {
             this.commitInlineRename();
         }
+        if (action !== 'root-rename-input' && this.state.renamingRoot && !target.closest('#rootRenameInput')) {
+            const confirmingNewRoot = this.state.newRootRename === this.state.renamingRoot;
+            this.commitRootRename();
+            if (this.state.renamingRoot || confirmingNewRoot || action === 'add-root') return;
+        }
         if (actionElement.closest('[data-context-menu]') && this.state.contextMenu?.type !== 'extra') {
             return this.handleContextAction(action);
         }
 
         if (action === 'modal-backdrop' && target === actionElement) return this.closeModal(true);
+        if (action === 'root-selector-backdrop') return this.update({ modal: null, contextMenu: null });
         if (action === 'script-picker-backdrop' && target === actionElement) return this.closeScriptValuePicker();
         if (action === 'tree-rename-input') return;
+        if (action === 'root-rename-input') return;
+        if (action === 'shape-code-input') return;
+        if (action === 'copy-shape-value') {
+            if (event.shiftKey) return this.startShapeValueEdit(actionElement.dataset.layer);
+            return void this.copyShapeValue(actionElement.dataset.layer);
+        }
         if (action === 'select-tree-item') {
             if (event.detail >= 2 && this.isTreeTextRenameTarget(event)) return this.startInlineRename(actionElement.dataset.path);
             return this.selectPath(actionElement.dataset.path);
@@ -1186,7 +1236,7 @@ class JSONCreator {
         if (action === 'open-extra-tools') return this.openExtraTools(event);
         if (action === 'open-root-selector') return this.update({ modal: this.state.modal?.type === 'root-selector' ? null : { type: 'root-selector' }, contextMenu: null });
         if (action === 'select-root') return this.switchRoot(actionElement.dataset.root);
-        if (action === 'add-root') return this.openRename('New Root', '', (name) => this.addRoot(name));
+        if (action === 'add-root') return this.addRootInline();
         if (action === 'toggle-theme') return this.toggleTheme();
         if (action === 'case-tab' || action === 'template-tab') return this.setEditor(this.state.editor.type, actionElement.dataset.tab);
         if (action === 'run-case') return this.runSelectedCase();
@@ -1250,7 +1300,7 @@ class JSONCreator {
         const rootRow = event.target.closest('.root-list-item');
         if (rootRow) {
             event.preventDefault();
-            this.openContextMenu(event.clientX, event.clientY, 'root-item', '', { rootName: rootRow.dataset.root });
+            this.openContextMenu(event.clientX, event.clientY, 'root-item', '', { rootName: rootRow.dataset.root, keepModal: true });
             return;
         }
         if (event.target.id === 'jsonCreatorTree') {
@@ -1261,7 +1311,7 @@ class JSONCreator {
 
     handleInput(event) {
         const target = event.target;
-        if (target.matches('.shape-layer-input')) return this.updateLayer(target.dataset.layer, target.value);
+        if (target.matches('.shape-layer-card > .shape-layer-input')) return this.updateLayer(target.dataset.layer, target.value);
         if (target.dataset.action === 'algorithm-input') return void this.handleAlgorithmInput(target.value);
         if (target.dataset.action === 'algset-script-input') {
             if (this.state.modal?.type === 'algset-script') {
@@ -1273,6 +1323,18 @@ class JSONCreator {
         }
         if (target.dataset.action === 'tree-rename-input') {
             this.state.renamingValue = target.value;
+            return;
+        }
+        if (target.dataset.action === 'root-rename-input') {
+            this.state.renamingRootValue = target.value;
+            return;
+        }
+        if (target.dataset.action === 'shape-code-input') {
+            if (this.state.shapeValueEdit) {
+                this.state.shapeValueEdit.value = target.value.toUpperCase().slice(0, 12);
+                this.state.shapeValueEdit.invalid = false;
+                if (target.value !== this.state.shapeValueEdit.value) target.value = this.state.shapeValueEdit.value;
+            }
             return;
         }
         if (target.dataset.field === 'alg') return this.updateCurrentField('alg', target.value);
@@ -1353,6 +1415,26 @@ class JSONCreator {
                 this.cancelInlineRename();
             }
         }
+        if (event.target.id === 'rootRenameInput') {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                this.commitRootRename();
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                this.cancelRootRename();
+            }
+        }
+        if (event.target.id === 'shapeValueEditInput') {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                this.commitShapeValueEdit();
+            }
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                this.cancelShapeValueEdit();
+            }
+        }
     }
 
     handleRootKeyup(event) {
@@ -1360,6 +1442,22 @@ class JSONCreator {
     }
 
     handleFocusOut(event) {
+        if (event.target.id === 'shapeValueEditInput') {
+            setTimeout(() => {
+                if (this.state.shapeValueEdit && document.activeElement?.id !== 'shapeValueEditInput') {
+                    this.commitShapeValueEdit();
+                }
+            }, 0);
+            return;
+        }
+        if (event.target.id === 'rootRenameInput') {
+            setTimeout(() => {
+                if (this.state.renamingRoot && document.activeElement?.id !== 'rootRenameInput') {
+                    this.commitRootRename();
+                }
+            }, 0);
+            return;
+        }
         if (event.target.id !== 'treeRenameInput') return;
         setTimeout(() => {
             if (this.state.renamingPath && document.activeElement?.id !== 'treeRenameInput') {
@@ -1653,6 +1751,7 @@ class JSONCreator {
     }
 
     openContextMenu(x, y, type, path, extra = {}) {
+        const { keepModal = false, ...menuExtra } = extra;
         this.update({
             contextMenu: {
                 type,
@@ -1662,9 +1761,9 @@ class JSONCreator {
                 rawX: x,
                 rawY: y,
                 maxHeight: 'calc(100vh - 16px)',
-                ...extra
+                ...menuExtra
             },
-            modal: null
+            modal: keepModal ? this.state.modal : null
         });
     }
 
@@ -1688,6 +1787,19 @@ class JSONCreator {
         element.style.left = `${left}px`;
         element.style.top = `${top}px`;
         element.style.maxHeight = `${availableHeight}px`;
+    }
+
+    positionRootSelector() {
+        if (this.state.modal?.type !== 'root-selector') return;
+        const selector = this.root?.querySelector('.root-selector-modal');
+        const button = this.root?.querySelector('#rootSelectorBtn');
+        if (!selector || !button) return;
+        const rect = button.getBoundingClientRect();
+        const margin = 8;
+        const width = Math.max(rect.width, 240);
+        selector.style.width = `${width}px`;
+        selector.style.left = `${Math.max(margin, Math.min(rect.left, window.innerWidth - width - margin))}px`;
+        selector.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - margin)}px`;
     }
 
     openExtraTools(event) {
@@ -1765,7 +1877,7 @@ class JSONCreator {
         if (!menu) return;
         if (action === 'rename-root') {
             const rootName = menu.rootName;
-            return this.openRename(`Rename ${rootName}`, rootName, (newName) => this.renameRoot(rootName, newName));
+            return this.startRootInlineRename(rootName);
         }
         if (action === 'export-root-json') return this.exportRootJSON(menu.rootName);
         if (action === 'reset-root-item') return this.resetRootName(menu.rootName);
@@ -1831,6 +1943,7 @@ class JSONCreator {
         this.state.editorPath = '';
         this.state.editor = { type: 'welcome', tab: 'shape' };
         this.state.expandedFolders = this.loadExpandedFolderState(rootName, this.state.tree);
+        this.clearRootRenameState();
         this.state.modal = null;
         this.restoreSelection();
         this.render();
@@ -1843,15 +1956,112 @@ class JSONCreator {
         this.persistRoot();
         AppState.developingJSONs[rootName] = {};
         saveDevelopingJSONs();
+        this.clearRootRenameState();
         this.closeModal(false);
         this.switchRoot(rootName);
     }
 
     renameRoot(oldName, newName) {
-        const rootName = String(newName || '').trim();
-        if (!oldName || !rootName || oldName === rootName) return this.closeModal(false);
-        if (AppState.developingJSONs[rootName]) return showFloatingMessage('A root with this name already exists', 'error');
+        this.applyRootRename(oldName, newName);
+    }
+
+    addRootInline() {
         this.persistRoot();
+        const rootName = getUniqueName(AppState.developingJSONs, 'New Root');
+        AppState.developingJSONs[rootName] = {};
+        saveDevelopingJSONs();
+        this.state.modal = { type: 'root-selector' };
+        this.state.contextMenu = null;
+        this.state.renamingRoot = rootName;
+        this.state.renamingRootValue = rootName;
+        this.state.newRootRename = rootName;
+        this.render();
+    }
+
+    startRootInlineRename(rootName, options = {}) {
+        if (!rootName || !AppState.developingJSONs[rootName]) return;
+        this.state.renamingRoot = rootName;
+        this.state.renamingRootValue = rootName;
+        this.state.newRootRename = options.removeOnCancel ? rootName : '';
+        this.state.modal = { type: 'root-selector' };
+        this.state.contextMenu = null;
+        this.render();
+    }
+
+    commitRootRename() {
+        const oldName = this.state.renamingRoot;
+        if (!oldName) return;
+        const rootName = String(this.state.renamingRootValue || '').trim();
+        if (!rootName) {
+            if (this.state.newRootRename === oldName) this.removeNewRootFromRename(oldName);
+            else {
+                this.clearRootRenameState();
+                this.render();
+            }
+            return;
+        }
+        const confirmingNewRoot = this.state.newRootRename === oldName;
+        this.applyRootRename(oldName, rootName, {
+            keepSelector: !confirmingNewRoot,
+            switchToRenamed: confirmingNewRoot
+        });
+    }
+
+    cancelRootRename() {
+        if (this.state.newRootRename && this.state.renamingRoot === this.state.newRootRename) {
+            this.removeNewRootFromRename(this.state.newRootRename);
+            return;
+        }
+        this.clearRootRenameState();
+        this.render();
+    }
+
+    clearRootRenameState() {
+        this.state.renamingRoot = '';
+        this.state.renamingRootValue = '';
+        this.state.newRootRename = '';
+    }
+
+    removeNewRootFromRename(rootName) {
+        if (rootName && AppState.developingJSONs[rootName]) {
+            delete AppState.developingJSONs[rootName];
+            clearTemplate(rootName);
+            clearExpandedFolders(rootName);
+        }
+        if (!Object.keys(AppState.developingJSONs).length) {
+            AppState.developingJSONs.default = normalizeTree(DEFAULT_ALGSET);
+            AppState.activeDevelopingJSON = 'default';
+        } else if (AppState.activeDevelopingJSON === rootName) {
+            AppState.activeDevelopingJSON = Object.keys(AppState.developingJSONs)[0];
+        }
+        this.clearRootRenameState();
+        saveDevelopingJSONs();
+        this.switchRoot(AppState.activeDevelopingJSON, { persistCurrent: false });
+        this.state.modal = { type: 'root-selector' };
+        this.render();
+    }
+
+    applyRootRename(oldName, newName, options = {}) {
+        const { keepSelector = false, switchToRenamed = false } = options;
+        const rootName = String(newName || '').trim();
+        if (!oldName || !AppState.developingJSONs[oldName]) {
+            this.clearRootRenameState();
+            return this.update({ modal: keepSelector ? { type: 'root-selector' } : null, contextMenu: null });
+        }
+        if (!rootName || oldName === rootName) {
+            this.clearRootRenameState();
+            if (switchToRenamed && AppState.developingJSONs[oldName]) return this.switchRoot(oldName);
+            return this.update({ modal: keepSelector ? { type: 'root-selector' } : null, contextMenu: null });
+        }
+        if (AppState.developingJSONs[rootName]) {
+            showFloatingMessage('A root with this name already exists', 'error');
+            this.state.modal = { type: 'root-selector' };
+            this.state.contextMenu = null;
+            this.render();
+            return;
+        }
+        this.persistRoot();
+        const template = loadTemplate(oldName);
         const expandedFolders = oldName === this.state.activeRoot
             ? [...this.state.expandedFolders]
             : loadExpandedFolders(oldName);
@@ -1859,10 +2069,24 @@ class JSONCreator {
         delete AppState.developingJSONs[oldName];
         saveExpandedFolders(rootName, Array.isArray(expandedFolders) ? expandedFolders : []);
         clearExpandedFolders(oldName);
+        if (template) saveTemplate(rootName, template);
+        clearTemplate(oldName);
         if (AppState.activeDevelopingJSON === oldName) AppState.activeDevelopingJSON = rootName;
         saveDevelopingJSONs();
-        this.closeModal(false);
-        this.switchRoot(AppState.activeDevelopingJSON, { persistCurrent: false });
+        this.clearRootRenameState();
+        if (switchToRenamed) {
+            this.switchRoot(rootName, { persistCurrent: false });
+            return;
+        }
+        if (this.state.activeRoot === oldName) {
+            this.switchRoot(AppState.activeDevelopingJSON, { persistCurrent: false });
+            if (keepSelector) {
+                this.state.modal = { type: 'root-selector' };
+                this.render();
+            }
+            return;
+        }
+        this.update({ modal: keepSelector ? { type: 'root-selector' } : null, contextMenu: null });
     }
 
     exportRootJSON(rootName) {
@@ -2174,17 +2398,18 @@ class JSONCreator {
         const value = String(rawValue || '').toUpperCase().slice(0, 12);
         const target = this.getEditingTarget();
         if (!target) return;
-        target[layer === 'top' ? 'inputTop' : 'inputBottom'] = value;
+        target[this.getLayerField(layer)] = value;
         this.state.algorithm.text = '';
         this.state.algorithm.tempHex = null;
         if (this.state.editor.type === 'case') this.persistRoot();
+        this.syncShapeLayerCode(layer, value);
         this.renderShapeVisuals();
     }
 
     resetLayer(layer) {
         const target = this.getEditingTarget();
         if (!target) return;
-        const field = layer === 'top' ? 'inputTop' : 'inputBottom';
+        const field = this.getLayerField(layer);
         target[field] = this.state.caseTemplate?.[field] || DEFAULT_LAYER;
         if (this.state.editor.type === 'case') this.persistRoot();
         this.render();
@@ -2238,6 +2463,76 @@ class JSONCreator {
 
     getEditingTarget() {
         return this.state.editor.type === 'template' ? this.state.templateDraft : this.getEditorCase();
+    }
+
+    getLayerField(layer) {
+        return layer === 'bottom' ? 'inputBottom' : 'inputTop';
+    }
+
+    getCurrentLayerValue(layer) {
+        const target = this.getEditingTarget();
+        return target?.[this.getLayerField(layer)] || DEFAULT_LAYER;
+    }
+
+    isValidLayerValue(value) {
+        return /^[0-9A-FECWXYZR]{12}$/i.test(String(value || ''));
+    }
+
+    startShapeValueEdit(layer) {
+        if (layer !== 'top' && layer !== 'bottom') return;
+        const value = this.getCurrentLayerValue(layer);
+        this.state.shapeValueEdit = {
+            layer,
+            value,
+            original: value,
+            invalid: false
+        };
+        this.render();
+    }
+
+    commitShapeValueEdit() {
+        const edit = this.state.shapeValueEdit;
+        if (!edit) return true;
+        const value = String(edit.value || '').trim().toUpperCase();
+        if (!this.isValidLayerValue(value)) {
+            showFloatingMessage('Invalid state. Enter a valid 12-character shape value.', 'error');
+            this.state.shapeValueEdit = { ...edit, value, invalid: true };
+            this.render();
+            return false;
+        }
+        const target = this.getEditingTarget();
+        if (!target) {
+            this.state.shapeValueEdit = null;
+            this.render();
+            return true;
+        }
+        target[this.getLayerField(edit.layer)] = value;
+        this.state.algorithm.text = '';
+        this.state.algorithm.tempHex = null;
+        this.state.shapeValueEdit = null;
+        if (this.state.editor.type === 'case') this.persistRoot();
+        this.render();
+        return true;
+    }
+
+    cancelShapeValueEdit() {
+        this.state.shapeValueEdit = null;
+        this.render();
+    }
+
+    syncShapeLayerCode(layer, value) {
+        const code = this.root?.querySelector(`.shape-layer-code[data-layer="${layer}"]`);
+        if (code) code.textContent = value || DEFAULT_LAYER;
+    }
+
+    async copyShapeValue(layer) {
+        const value = this.getCurrentLayerValue(layer);
+        try {
+            await navigator.clipboard.writeText(value);
+            showFloatingMessage('Shape value copied', 'success', 1800);
+        } catch (error) {
+            showFloatingMessage(`Failed to copy: ${error.message}`, 'error');
+        }
     }
 
     handleAlgorithmInput(text) {
@@ -2295,7 +2590,7 @@ class JSONCreator {
                     colorScheme
                 );
                 state.onChange((nextState) => {
-                    const field = layer === 'top' ? 'inputTop' : 'inputBottom';
+                    const field = this.getLayerField(layer);
                     const nextValue = nextState.getText(layer);
                     if (!nextValue || nextValue.length !== 12) return;
                     target[field] = nextValue;
@@ -2303,6 +2598,7 @@ class JSONCreator {
                     this.state.algorithm.tempHex = null;
                     const input = this.root?.querySelector(`#${layer}LayerInput`);
                     if (input) input.value = nextValue;
+                    this.syncShapeLayerCode(layer, nextValue);
                     if (this.state.editor.type === 'case') this.persistRoot();
                 });
                 container.innerHTML = window.InteractiveScrambleRenderer.createInteractiveSVG(state, { size: 200 });
@@ -2409,7 +2705,8 @@ class JSONCreator {
             let failed = 0;
             for (const row of rows) {
                 const caseName = String(row[0] || '').trim();
-                const algorithm = String(row[2] || '').trim();
+                const algorithm = String(row[1] || '').trim();
+                const hintAlgorithm = String(row[2] || algorithm).trim();
                 if (!caseName || !algorithm) {
                     failed += 1;
                     continue;
@@ -2418,7 +2715,7 @@ class JSONCreator {
                     const hex = normalizeAlgorithmInput(algorithm, 'inverse');
                     const finalName = getUniqueName(target.folder, caseName);
                     target.folder[finalName] = createCaseFromTemplate(finalName, this.state.caseTemplate);
-                    target.folder[finalName].alg = algorithm;
+                    target.folder[finalName].alg = hintAlgorithm;
                     target.folder[finalName].inputTop = hex.tlHex;
                     target.folder[finalName].inputBottom = hex.blHex;
                     success += 1;
