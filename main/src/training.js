@@ -24,6 +24,7 @@ const AppState = {
     timerStart: 0,
     timerElapsed: 0,
     holdStart: 0,
+    removeLastConsumedKey: '',
     trainingJSONs: {}, // Multiple training JSONs: { name: data }
     activeTrainingJSON: null, // Currently selected training JSON
     developingJSONs: {}, // Multiple developing JSONs for JSON creator
@@ -141,6 +142,8 @@ const DEFAULT_ALGSET = {
 };
 
 const DEFAULT_TRAINING_ALGSETS = [
+    { file: 'pll-plus-1.json', name: 'Lin- PLL+1', label: 'Lin- PLL+1', author: 'Amalogu' },
+    { file: 'SB.json', name: 'Lin- SB', label: 'Lin- SB', author: 'Amalogu' },
     { file: 'EOCP.json', name: 'EOCP', label: 'EOCP', author: 'Abid' }
 ];
 
@@ -410,6 +413,29 @@ function getInitialTimerDisplay() {
     return '0.00';
 }
 
+function getScrambleCaseKey(scramble) {
+    if (!scramble) return '';
+    const jsonName = scramble._jsonName || AppState.activeTrainingJSON || '';
+    const path = scramble._path || '';
+    if (path) return `${jsonName}:${path}`;
+    return `${jsonName}:name:${scramble.caseName || ''}`;
+}
+
+function getSelectedCaseKey(item) {
+    if (!item) return '';
+    const jsonName = item._jsonName || AppState.activeTrainingJSON || '';
+    const path = item._path || '';
+    if (path) return `${jsonName}:${path}`;
+    return `${jsonName}:name:${item.caseName || ''}`;
+}
+
+function canRemoveLastSolve() {
+    const key = getScrambleCaseKey(AppState.previousScramble);
+    return Boolean(key)
+        && AppState.removeLastConsumedKey !== key
+        && AppState.selectedCases.some((item) => getSelectedCaseKey(item) === key);
+}
+
 function trainerIconSprite() {
     return `
         <svg aria-hidden="true" style="display:none">
@@ -443,6 +469,7 @@ function renderApp() {
         ? escapeHtml(`${AppState.previousScramble.scramble} (${AppState.previousScramble.pathLabel || AppState.previousScramble.caseName || 'Unknown case'})`)
         : 'Last scramble will show up here';
     const activeAlgset = escapeHtml(AppState.activeTrainingJSON || 'Select Algset');
+    const removeLastDisabled = canRemoveLastSolve() ? '' : 'disabled';
 
     app.innerHTML = `
         ${trainerIconSprite()}
@@ -484,7 +511,7 @@ function renderApp() {
                         </div>
                         <div class="scramble-controls">
                             <button class="bar-btn" id="prevScrambleBtn" ${AppState.previousScramble ? '' : 'disabled'}>← Previous</button>
-                            <button class="bar-btn" id="unselprev">Remove last</button>
+                            <button class="bar-btn" id="unselprev" ${removeLastDisabled}>Remove last</button>
                             <button class="bar-btn" id="nextScrambleBtn">Next →</button>
                             <button class="hint-btn" id="hintBtn" aria-label="Show hint">
                                 <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lightbulb"/></svg>
@@ -577,10 +604,13 @@ async function generateNewScramble() {
         
         if (AppState.currentScramble) AppState.scrambleHistory.push(AppState.currentScramble);
         AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
+        AppState.removeLastConsumedKey = '';
         AppState.currentScramble = {
             ...result, 
             caseName: randomCase.caseName, 
             pathLabel,
+            _path: randomCase._path,
+            _jsonName: randomCase._jsonName,
             alg: randomCase.alg || '',
             scramble: formatScrambleDisplay(scramble)
         };
@@ -589,11 +619,14 @@ async function generateNewScramble() {
         console.error('Error generating scramble:', error);
         if (AppState.currentScramble) AppState.scrambleHistory.push(AppState.currentScramble);
         AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
+        AppState.removeLastConsumedKey = '';
         AppState.currentScramble = {
             hexState: 'Error generating scramble', 
             scramble: 'Error: ' + error.message,
             caseName: randomCase.caseName,
-            pathLabel
+            pathLabel,
+            _path: randomCase._path,
+            _jsonName: randomCase._jsonName
         };
         renderApp();
     }
@@ -775,15 +808,27 @@ window.importAllAppData = function() {
 };
 
 function removeLastSolve() {
-    if (!AppState.selectedCases.length) {
-        showFloatingMessage('No selected case to remove', 'info');
+    const targetKey = getScrambleCaseKey(AppState.previousScramble);
+    if (!targetKey || AppState.removeLastConsumedKey === targetKey) {
+        renderApp();
         return;
     }
 
-    const removed = AppState.selectedCases.pop();
+    const previousCount = AppState.selectedCases.length;
+    const removedCase = AppState.selectedCases.find((item) => getSelectedCaseKey(item) === targetKey);
+    AppState.selectedCases = AppState.selectedCases.filter((item) => getSelectedCaseKey(item) !== targetKey);
+    AppState.removeLastConsumedKey = targetKey;
+    if (AppState.selectedCases.length === previousCount) {
+        renderApp();
+        return;
+    }
     saveSelectedCases();
-    showFloatingMessage(`Deselected ${removed.caseName || 'last case'}`, 'success');
-    void generateNewScramble();
+    if (AppState.selectedCases.length === 0) {
+        AppState.timerState = 'idle';
+        AppState.currentScramble = null;
+    }
+    showFloatingMessage(`Deselected ${removedCase?.caseName || AppState.previousScramble?.caseName || 'last case'}`, 'success');
+    renderApp();
 }
 
 // Timer handlers
