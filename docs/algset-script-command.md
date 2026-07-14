@@ -10,6 +10,7 @@ Scripts run only when the user presses `Run`. Statements end with `.`.
 if <target> <execute-command>[ and <execute-command>...].
 create <create-command>.
 delete <delete-command>.
+arrange <cases|folders|elements|items> in <scope> by <type|alphabetical-order> [and <type|alphabetical-order>].
 ```
 
 Keywords are case-insensitive. Names and values are case-sensitive.
@@ -204,6 +205,21 @@ delete if case-name contains "temp" in here.
 ```
 
 Deletes should report counts. Large deletes should be confirmed by the UI before applying.
+
+## Arrange Commands
+
+Arrange commands reorder the immediate children of the target folder or root.
+
+`items` and `elements` mean both folders and cases. `type` groups folders above cases while preserving the existing order inside each group. `alphabetical-order` sorts by item name. Add `ascending` or `descending` after `alphabetical-order` to choose direction.
+
+If `type` and `alphabetical-order` are both present, folders stay above cases and each group is sorted alphabetically.
+
+```text
+arrange elements in here by type and alphabetical-order ascending.
+arrange items in ["EOCP"] by alphabetical-order descending & type.
+arrange cases in selected by alphabetical-order ascending.
+arrange folders in root by type.
+```
 
 ## Value Syntax
 

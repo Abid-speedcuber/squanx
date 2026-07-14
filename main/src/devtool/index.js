@@ -230,12 +230,13 @@ function isScriptAutocompleteContext(text, cursor) {
 function highlightAlgsetScript(text, cursor = text.length, completion = '') {
     const cursorMarker = '\uE000';
     const flowKeywords = new Set(['if', 'where', 'and', 'from', 'with', 'to', 'then']);
-    const scopeKeywords = new Set(['in', 'here', 'root', 'selected', 'template', 'children', 'descendants']);
+    const scopeKeywords = new Set(['in', 'here', 'root', 'selected', 'template', 'children', 'descendants', 'by']);
     const executeCommands = new Set(['append', 'set', 'add', 'remove', 'replace', 'rename', 'copy']);
-    const createDeleteCommands = new Set(['create', 'delete']);
+    const createDeleteCommands = new Set(['create', 'delete', 'arrange']);
     const targetTypes = new Set(['case-name', 'folder-name', 'path']);
     const targetMethods = new Set(['is', 'contains', 'starts-with', 'ends-with', 'matches', 'has', 'split', 'left', 'right']);
     const fields = new Set(['top-layer', 'toplayer', 'bottom-layer', 'bottomlayer', 'alg', 'parity', 'constraints', 'pre-abf', 'preabf', 'post-abf', 'postabf', 'pre-auf', 'preauf', 'pre-adf', 'preadf', 'post-auf', 'postauf', 'post-adf', 'postadf', 'rul', 'rdl', 'auf', 'adf']);
+    const arrangeWords = new Set(['cases', 'folders', 'elements', 'items', 'type', 'alphabetical-order', 'ascending', 'descending']);
     const source = `${text.slice(0, cursor)}${cursorMarker}${text.slice(cursor)}`;
     const tokens = source.match(/\uE000|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\[[^\]]*\]|\{[^}]*\}|[a-zA-Z][a-zA-Z-]*|-?\d+|[=.,&]|\s+|./g) || [];
     return tokens.map((token) => {
@@ -248,6 +249,7 @@ function highlightAlgsetScript(text, cursor = text.length, completion = '') {
         if (/^\[/.test(token) || /^\{/.test(token)) return `<span class="script-list">${escapeHtml(token)}</span>`;
         if (targetTypes.has(lower)) return `<span class="script-target">${escapeHtml(token)}</span>`;
         if (targetMethods.has(lower)) return `<span class="script-method">${escapeHtml(token)}</span>`;
+        if (arrangeWords.has(lower)) return `<span class="script-method">${escapeHtml(token)}</span>`;
         if (executeCommands.has(lower)) return `<span class="script-command">${escapeHtml(token)}</span>`;
         if (createDeleteCommands.has(lower)) return `<span class="script-create-delete">${escapeHtml(token)}</span>`;
         if (fields.has(lower)) return `<span class="script-field">${escapeHtml(token)}</span>`;

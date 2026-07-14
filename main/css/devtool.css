@@ -715,6 +715,12 @@ body.theme-dark .script-ghost {
     white-space: pre-wrap;
 }
 
+body.theme-dark .modal-content.devtool-modal .algset-script-summary {
+    background: var(--devtool-muted-panel, #071321) !important;
+    border-color: var(--devtool-border-strong, #244b70) !important;
+    color: var(--devtool-text, #d9e9ff) !important;
+}
+
 .script-value-picker-backdrop {
     position: fixed;
     inset: 0;

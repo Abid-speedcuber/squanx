@@ -17,7 +17,9 @@ import {
 
 const EXECUTE_VERBS = ['append', 'set', 'add', 'remove', 'replace', 'rename', 'copy'];
 const TARGET_FIELDS = ['case-name', 'folder-name', 'path', 'top-layer', 'bottom-layer', 'topLayer', 'bottomLayer', 'alg', 'parity', 'constraints', 'pre-abf', 'post-abf', 'preABF', 'postABF', 'pre-auf', 'pre-adf', 'post-auf', 'post-adf', 'rul', 'rdl', 'auf', 'adf'];
-const KEYWORDS = ['if', 'in', 'here', 'root', 'selected', 'where', 'and', 'create', 'delete', 'append', 'set', 'add', 'remove', 'replace', 'rename', 'copy', 'from', 'template', 'with'];
+const ARRANGE_TARGETS = ['cases', 'folders', 'elements', 'items'];
+const ARRANGE_CRITERIA = ['type', 'alphabetical-order', 'ascending', 'descending'];
+const KEYWORDS = ['if', 'in', 'here', 'root', 'selected', 'where', 'and', 'create', 'delete', 'arrange', 'by', ...ARRANGE_TARGETS, ...ARRANGE_CRITERIA, 'append', 'set', 'add', 'remove', 'replace', 'rename', 'copy', 'from', 'template', 'with'];
 const OPERATORS = ['is', 'contains', 'starts-with', 'ends-with', 'matches', 'has', 'split'];
 
 function scriptError(message) {
@@ -582,11 +584,76 @@ function parseDeleteTarget(text) {
     return { conditions: splitTargetFilters(filterText).map(parseCondition), scopeText };
 }
 
+function splitArrangeCriteria(text) {
+    const parts = [];
+    let start = 0;
+    const lower = text.toLowerCase();
+    scanSegments(text, (_char, index) => {
+        const isAmp = text[index] === '&';
+        const isAnd = lower.startsWith('and', index) && hasKeywordBoundary(lower, index, 3);
+        if (!isAmp && !isAnd) return false;
+        const length = isAmp ? 1 : 3;
+        const part = text.slice(start, index).trim();
+        if (part) parts.push(part);
+        start = index + length;
+        return false;
+    });
+    const tail = text.slice(start).trim();
+    if (tail) parts.push(tail);
+    return parts;
+}
+
+function parseArrangeCriteria(text) {
+    const criteria = {
+        type: false,
+        alphabetical: false,
+        direction: 'ascending'
+    };
+    for (const part of splitArrangeCriteria(text)) {
+        const normalized = normalizeSpace(part).toLowerCase();
+        if (normalized === 'type') {
+            criteria.type = true;
+            continue;
+        }
+        let match = normalized.match(/^alphabetical-order(?:\s+(ascending|descending))?$/);
+        if (match) {
+            criteria.alphabetical = true;
+            criteria.direction = match[1] || criteria.direction;
+            continue;
+        }
+        match = normalized.match(/^(ascending|descending)$/);
+        if (match) {
+            criteria.direction = match[1];
+            continue;
+        }
+        throw scriptError(`Could not parse arrange criterion: ${part}`);
+    }
+    if (!criteria.type && !criteria.alphabetical) throw scriptError('Arrange command needs type or alphabetical-order');
+    return criteria;
+}
+
+function parseArrangeStatement(statement) {
+    const body = statement.replace(/^arrange\s+/i, '').trim();
+    const byIndex = findKeyword(body, ['by']);
+    if (byIndex < 0) throw scriptError(`Missing by clause in arrange command: ${statement}`);
+    const targetText = body.slice(0, byIndex).trim();
+    const criteriaText = body.slice(byIndex + 2).trim();
+    const match = targetText.match(/^(cases|folders|elements|items)(?:\s+in\s+([\s\S]+))?$/i);
+    if (!match) throw scriptError(`Could not parse arrange target: ${targetText}`);
+    return {
+        type: 'arrange',
+        target: match[1].toLowerCase(),
+        scopeText: match[2]?.trim() || 'here',
+        criteria: parseArrangeCriteria(criteriaText)
+    };
+}
+
 function parseAlgsetScript(script) {
     return splitStatements(script).map((statement) => {
         if (/^if\s+/i.test(statement)) return parseIfStatement(statement);
         if (/^create\s+/i.test(statement)) return parseCreateStatement(statement);
         if (/^delete\s+/i.test(statement)) return parseDeleteStatement(statement);
+        if (/^arrange\s+/i.test(statement)) return parseArrangeStatement(statement);
         throw scriptError(`Unknown statement: ${statement}`);
     });
 }
@@ -961,6 +1028,68 @@ function deleteEmptyFolders(node, summary) {
     }
 }
 
+function targetFolderForArrange(tree, context, scopeText) {
+    const scope = getScopeNode(tree, context, scopeText || 'here');
+    if (!isCase(scope.node)) return { folder: scope.node, path: scope.path };
+    const info = getParent(tree, scope.path);
+    return { folder: info?.parent || tree, path: info?.parentPath || '' };
+}
+
+function arrangeItemKind(value) {
+    if (isFolder(value)) return 'folder';
+    if (isCase(value)) return 'case';
+    return '';
+}
+
+function arrangeTargetMatches(target, kind) {
+    if (target === 'elements' || target === 'items') return kind === 'folder' || kind === 'case';
+    if (target === 'folders') return kind === 'folder';
+    return kind === 'case';
+}
+
+function typeRank(kind) {
+    return kind === 'folder' ? 0 : 1;
+}
+
+function compareArrangeEntries(a, b, criteria) {
+    if (criteria.type && a.kind !== b.kind) return typeRank(a.kind) - typeRank(b.kind);
+    if (criteria.alphabetical) {
+        const textCompare = a.key.localeCompare(b.key, undefined, { numeric: true, sensitivity: 'base' });
+        if (textCompare) return criteria.direction === 'descending' ? -textCompare : textCompare;
+        if (a.kind !== b.kind) return typeRank(a.kind) - typeRank(b.kind);
+    }
+    return a.index - b.index;
+}
+
+function executeArrange(statement, tree, context, summary) {
+    const target = targetFolderForArrange(tree, context, statement.scopeText);
+    if (!isFolder(target.folder)) throw scriptError(`Arrange target is not a folder: ${statement.scopeText}`);
+    const entries = Object.entries(target.folder).map(([key, value], index) => ({
+        key,
+        value,
+        index,
+        kind: arrangeItemKind(value)
+    }));
+    const sortable = entries.filter((entry) => arrangeTargetMatches(statement.target, entry.kind));
+    if (sortable.length < 2) return;
+    const sorted = sortable.slice().sort((a, b) => compareArrangeEntries(a, b, statement.criteria));
+    const nextEntries = [];
+    let sortedIndex = 0;
+    for (const entry of entries) {
+        if (arrangeTargetMatches(statement.target, entry.kind)) {
+            nextEntries.push(sorted[sortedIndex]);
+            sortedIndex += 1;
+        } else {
+            nextEntries.push(entry);
+        }
+    }
+    if (entries.every((entry, index) => entry.key === nextEntries[index].key && entry.value === nextEntries[index].value)) return;
+    for (const key of Object.keys(target.folder)) delete target.folder[key];
+    for (const entry of nextEntries) target.folder[entry.key] = entry.value;
+    summary.arrangedDirectories += 1;
+    summary.arrangedItems += sortable.length;
+}
+
 function createSummary() {
     return {
         matchedCases: 0,
@@ -969,6 +1098,8 @@ function createSummary() {
         createdFolders: 0,
         deletedCases: 0,
         deletedFolders: 0,
+        arrangedDirectories: 0,
+        arrangedItems: 0,
         fieldsChanged: {},
         warnings: [],
         errors: []
@@ -984,6 +1115,7 @@ function executeAlgsetScript(script, context = {}) {
             if (statement.type === 'if') executeIf(statement, tree, context, summary);
             else if (statement.type.startsWith('create-')) executeCreate(statement, tree, context, summary);
             else if (statement.type.startsWith('delete-')) executeDelete(statement, tree, context, summary);
+            else if (statement.type === 'arrange') executeArrange(statement, tree, context, summary);
         }
         return { ok: true, tree, summary, statements };
     } catch (error) {
@@ -1003,6 +1135,8 @@ function formatScriptSummary(summary) {
         `Created folders: ${summary.createdFolders}`,
         `Deleted cases: ${summary.deletedCases}`,
         `Deleted folders: ${summary.deletedFolders}`,
+        `Arranged directories: ${summary.arrangedDirectories}`,
+        `Arranged items: ${summary.arrangedItems}`,
         `Fields changed: ${fields}`
     ];
     if (summary.warnings.length) lines.push(`Warnings: ${summary.warnings.length}`, ...summary.warnings.map((warning) => `- ${warning}`));
