@@ -37,6 +37,8 @@ const AppState = {
     }
 };
 
+const defaultTrainingJSONCache = {};
+
 // Utility Functions (shared with devtool.js)
 function showFloatingMessage(message, type = 'info', duration = 3000) {
     const existing = document.querySelector('.floating-message');
@@ -142,9 +144,9 @@ const DEFAULT_ALGSET = {
 };
 
 const DEFAULT_TRAINING_ALGSETS = [
-    { file: 'pll-plus-1.json', name: 'Lin- PLL+1', label: 'Lin- PLL+1', author: 'Amalogu' },
-    { file: 'SB.json', name: 'Lin- SB', label: 'Lin- SB', author: 'Amalogu' },
-    { file: 'linm2pll.json', name: 'Lin-M2+PLL', label: 'Lin-M2+PLL', author: 'Woofle' },
+    { file: 'pll-plus-1.json', name: 'Lin- PLL+1', label: 'PLL+1', category: 'Lin', author: 'Amalogu' },
+    { file: 'SB.json', name: 'Lin- SB', label: 'SB', category: 'Lin', author: 'Amalogu', info: { text: 'extra information to be added' } },
+    { file: 'linm2pll.json', name: 'Lin-M2+PLL', label: 'M2+PLL', category: 'Lin', author: 'Woofle' },
     { file: 'EOCP.json', name: 'EOCP', label: 'EOCP', author: 'Abid' }
 ];
 
@@ -163,6 +165,60 @@ function getImportedTrainingAlgsetNames() {
     return Object.keys(AppState.trainingJSONs).filter((name) => !isDefaultTrainingAlgset(name));
 }
 
+function getDefaultTrainingAlgset(name) {
+    return DEFAULT_TRAINING_ALGSETS.find((item) => item.name === name) || null;
+}
+
+function getTrainingJSONData(name) {
+    return AppState.trainingJSONs[name] || defaultTrainingJSONCache[name] || null;
+}
+
+function getFirstAvailableTrainingAlgsetName() {
+    return getImportedTrainingAlgsetNames()[0] || null;
+}
+
+function getAlgsetDisplayLabel(name) {
+    return getDefaultTrainingAlgset(name)?.label || name || 'Select Algset';
+}
+
+function getUniqueImportedTrainingAlgsetName(baseName) {
+    const fallback = String(baseName || 'My algset').trim() || 'My algset';
+    if (!AppState.trainingJSONs[fallback] && !isDefaultTrainingAlgset(fallback)) return fallback;
+    let counter = 1;
+    let name = `${fallback} ${counter}`;
+    while (AppState.trainingJSONs[name] || isDefaultTrainingAlgset(name)) {
+        counter += 1;
+        name = `${fallback} ${counter}`;
+    }
+    return name;
+}
+
+function removeDefaultAlgsetsFromImportedStorage() {
+    for (const name of Object.keys(AppState.trainingJSONs)) {
+        if (isDefaultTrainingAlgset(name)) delete AppState.trainingJSONs[name];
+    }
+}
+
+function hasAlgsetInfo(name) {
+    const info = getDefaultTrainingAlgset(name)?.info;
+    return Boolean(info && (info.text || (Array.isArray(info.links) && info.links.length)));
+}
+
+function getDefaultAlgsetGroups() {
+    const groups = [];
+    const groupMap = new Map();
+    for (const algset of DEFAULT_TRAINING_ALGSETS) {
+        const groupName = algset.category || 'Default';
+        if (!groupMap.has(groupName)) {
+            const group = { name: groupName, items: [] };
+            groupMap.set(groupName, group);
+            groups.push(group);
+        }
+        groupMap.get(groupName).items.push(algset);
+    }
+    return groups;
+}
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replaceAll('&', '&amp;')
@@ -177,7 +233,7 @@ function cloneJSON(value) {
 }
 
 async function fetchDefaultAlgsetData(name) {
-    const algset = DEFAULT_TRAINING_ALGSETS.find((item) => item.name === name);
+    const algset = getDefaultTrainingAlgset(name);
     if (!algset) return null;
     const response = await fetch(`${DEFAULT_ALGSET_BASE_PATH}${algset.file}`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -185,11 +241,11 @@ async function fetchDefaultAlgsetData(name) {
 }
 
 async function ensureDefaultTrainingAlgset(name) {
-    if (AppState.trainingJSONs[name]) return AppState.trainingJSONs[name];
+    if (defaultTrainingJSONCache[name]) return defaultTrainingJSONCache[name];
     const data = await fetchDefaultAlgsetData(name);
     if (!data) return null;
-    importTrainingJSONData(name, data, { activate: false, selectAll: true });
-    return AppState.trainingJSONs[name];
+    defaultTrainingJSONCache[name] = expandCompactAlgset(data);
+    return defaultTrainingJSONCache[name];
 }
 
 // Load training JSONs from IndexedDB, with one-time localStorage migration.
@@ -200,10 +256,11 @@ function loadTrainingJSONs(persisted = {}) {
         for (const [name, data] of Object.entries(AppState.trainingJSONs)) {
             AppState.trainingJSONs[name] = expandCompactAlgset(data);
         }
+        removeDefaultAlgsetsFromImportedStorage();
     }
 
     const activeJSON = readLocalString('sq1ActiveTrainingJSON', '');
-    if (activeJSON && AppState.trainingJSONs[activeJSON]) {
+    if (activeJSON && (AppState.trainingJSONs[activeJSON] || isDefaultTrainingAlgset(activeJSON))) {
         AppState.activeTrainingJSON = activeJSON;
     } else if (Object.keys(AppState.trainingJSONs).length > 0) {
         AppState.activeTrainingJSON = Object.keys(AppState.trainingJSONs)[0];
@@ -215,6 +272,8 @@ function saveTrainingJSONs() {
     saveLargeValue('sq1TrainingJSONs', AppState.trainingJSONs);
     if (AppState.activeTrainingJSON) {
         writeLocalString('sq1ActiveTrainingJSON', AppState.activeTrainingJSON);
+    } else {
+        writeLocalString('sq1ActiveTrainingJSON', '');
     }
 }
 
@@ -225,7 +284,7 @@ function getTrainingCaseByPath(tree, path) {
 }
 
 function buildSelectedCasesForAlgset(name, paths = null) {
-    const tree = AppState.trainingJSONs[name];
+    const tree = getTrainingJSONData(name);
     if (!tree) return [];
     const casePaths = paths || getCasePaths(tree);
     return casePaths
@@ -238,11 +297,12 @@ function buildSelectedCasesForAlgset(name, paths = null) {
 
 function activateTrainingJSON(name, options = {}) {
     const { selectAllWhenMissing = true } = options;
-    if (!name || !AppState.trainingJSONs[name]) return false;
+    const tree = getTrainingJSONData(name);
+    if (!name || !tree) return false;
     AppState.activeTrainingJSON = name;
     const savedSelection = AppState.selectedCasesByAlgset[name];
     if (Array.isArray(savedSelection)) {
-        AppState.selectedCases = savedSelection.filter((item) => getTrainingCaseByPath(AppState.trainingJSONs[name], item._path));
+        AppState.selectedCases = savedSelection.filter((item) => getTrainingCaseByPath(tree, item._path));
     } else {
         AppState.selectedCases = selectAllWhenMissing ? buildSelectedCasesForAlgset(name) : [];
     }
@@ -253,11 +313,13 @@ function activateTrainingJSON(name, options = {}) {
 
 function importTrainingJSONData(name, data, options = {}) {
     const { activate = true, selectAll = true } = options;
-    AppState.trainingJSONs[name] = expandCompactAlgset(data);
-    AppState.selectedCasesByAlgset[name] = selectAll ? buildSelectedCasesForAlgset(name) : [];
-    if (activate || !AppState.activeTrainingJSON) activateTrainingJSON(name, { selectAllWhenMissing: selectAll });
+    const storageName = isDefaultTrainingAlgset(name) ? getUniqueImportedTrainingAlgsetName(`${name} copy`) : name;
+    AppState.trainingJSONs[storageName] = expandCompactAlgset(data);
+    AppState.selectedCasesByAlgset[storageName] = selectAll ? buildSelectedCasesForAlgset(storageName) : [];
+    if (activate || !AppState.activeTrainingJSON) activateTrainingJSON(storageName, { selectAllWhenMissing: selectAll });
     saveTrainingJSONs();
     saveSelectedCases();
+    return storageName;
 }
 
 // Load developing roots from per-root IndexedDB records, with legacy fallback.
@@ -385,6 +447,9 @@ async function initApp() {
     loadTrainingJSONs(persisted);
     await loadDevelopingJSONs(persisted);
     loadCaseTreeExpandedState(persisted);
+    if (isDefaultTrainingAlgset(AppState.activeTrainingJSON)) {
+        await ensureDefaultTrainingAlgset(AppState.activeTrainingJSON);
+    }
     loadSelectedCases(persisted);
     loadSessionTimes(persisted);
     applyTheme();
@@ -446,6 +511,7 @@ function trainerIconSprite() {
             <symbol id="rail-icon-import" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
             <symbol id="rail-icon-export" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
             <symbol id="rail-icon-devtool" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/><path d="m14.5 4-5 16"/></symbol>
+            <symbol id="rail-icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="12" y1="7" x2="12" y2="7"/></symbol>
             <symbol id="icon-lightbulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M8.5 14.5c-1.6-1.1-2.5-2.9-2.5-4.8A6 6 0 0 1 18 9.7c0 1.9-.9 3.7-2.5 4.8-.6.4-.9 1-.9 1.7V17H9.4v-.8c0-.7-.3-1.3-.9-1.7z"/></symbol>
         </svg>
     `;
@@ -471,6 +537,9 @@ function renderApp() {
         : 'Last scramble will show up here';
     const activeAlgset = escapeHtml(AppState.activeTrainingJSON || 'Select Algset');
     const removeLastDisabled = canRemoveLastSolve() ? '' : 'disabled';
+    const algsetInfoButton = hasAlgsetInfo(AppState.activeTrainingJSON)
+        ? railButton('algset-info', 'rail-icon-info', 'Algset info')
+        : '';
 
     app.innerHTML = `
         ${trainerIconSprite()}
@@ -497,6 +566,7 @@ function renderApp() {
                         ${railButton('cases', 'rail-icon-cases', 'Case selector')}
                         ${railButton('help', 'rail-icon-help', 'Help')}
                         ${railButton('settings', 'rail-icon-settings', 'Settings')}
+                        ${algsetInfoButton}
                         ${railButton('devtool', 'rail-icon-devtool', 'Devtool')}
                     </div>
                     <div class="rail-extra">
@@ -534,6 +604,7 @@ function renderApp() {
                 ${railButton('cases', 'rail-icon-cases', 'Case selector')}
                 ${railButton('help', 'rail-icon-help', 'Help')}
                 ${railButton('settings', 'rail-icon-settings', 'Settings')}
+                ${algsetInfoButton}
                 ${railButton('devtool', 'rail-icon-devtool', 'Devtool')}
                 ${railButton('import-data', 'rail-icon-import', "Import all app's data")}
                 ${railButton('export-data', 'rail-icon-export', "Export all app's data")}
@@ -691,6 +762,9 @@ function handleRailAction(action) {
         case 'settings':
             openSettingsModal();
             break;
+        case 'algset-info':
+            openAlgsetInfoModal();
+            break;
         case 'import-data':
             openImportAllDataModal();
             break;
@@ -771,20 +845,25 @@ window.handleAllDataFileDrop = function(event) {
     reader.readAsText(file);
 };
 
-window.importAllAppData = function() {
+window.importAllAppData = async function() {
     const jsonText = document.getElementById('importAllDataInput')?.value.trim();
     if (!jsonText) return showFloatingMessage('Please paste or drop an app data export', 'error');
     try {
         const data = JSON.parse(jsonText);
         AppState.trainingJSONs = data.trainingJSONs || {};
-        AppState.activeTrainingJSON = data.activeTrainingJSON && AppState.trainingJSONs[data.activeTrainingJSON]
+        for (const [name, algsetData] of Object.entries(AppState.trainingJSONs)) {
+            AppState.trainingJSONs[name] = expandCompactAlgset(algsetData);
+        }
+        removeDefaultAlgsetsFromImportedStorage();
+        AppState.activeTrainingJSON = data.activeTrainingJSON && (AppState.trainingJSONs[data.activeTrainingJSON] || isDefaultTrainingAlgset(data.activeTrainingJSON))
             ? data.activeTrainingJSON
-            : Object.keys(AppState.trainingJSONs)[0] || null;
+            : getFirstAvailableTrainingAlgsetName();
         AppState.selectedCasesByAlgset = data.selectedCasesByAlgset || {};
         AppState.caseTreeExpandedByAlgset = data.caseTreeExpandedByAlgset || {};
         if (Array.isArray(data.selectedCases) && AppState.activeTrainingJSON && !AppState.selectedCasesByAlgset[AppState.activeTrainingJSON]) {
             AppState.selectedCasesByAlgset[AppState.activeTrainingJSON] = data.selectedCases;
         }
+        if (isDefaultTrainingAlgset(AppState.activeTrainingJSON)) await ensureDefaultTrainingAlgset(AppState.activeTrainingJSON);
         if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
         else AppState.selectedCases = [];
         AppState.developingJSONs = data.developingJSONs || { default: DEFAULT_ALGSET };
@@ -1090,6 +1169,7 @@ function renderAlgsetSelectorContent() {
     if (!content) return;
 
     const importedAlgsets = getImportedTrainingAlgsetNames();
+    const defaultGroups = getDefaultAlgsetGroups();
 
     const importedMarkup = importedAlgsets.length ? `
         <section class="algset-section">
@@ -1107,13 +1187,18 @@ function renderAlgsetSelectorContent() {
     content.innerHTML = `
         <section class="algset-section">
             <h3>Default</h3>
-            <div class="algset-list">
-                ${DEFAULT_TRAINING_ALGSETS.map(algset => `
-                    <div class="algset-item ${algset.name === AppState.activeTrainingJSON ? 'active' : ''}" onclick='selectDefaultAlgset(${JSON.stringify(algset.name)})' oncontextmenu='openAlgsetContextMenu(event, ${JSON.stringify(algset.name)}, "default")'>
-                        <span>${escapeHtml(algset.label)} <small>by ${escapeHtml(algset.author)}</small></span>
+            ${defaultGroups.map((group) => `
+                <div class="algset-subsection">
+                    <h4>${escapeHtml(group.name)}</h4>
+                    <div class="algset-list">
+                        ${group.items.map(algset => `
+                            <div class="algset-item ${algset.name === AppState.activeTrainingJSON ? 'active' : ''}" onclick='selectDefaultAlgset(${JSON.stringify(algset.name)})' oncontextmenu='openAlgsetContextMenu(event, ${JSON.stringify(algset.name)}, "default")'>
+                                <span>${escapeHtml(algset.label)} <small>by ${escapeHtml(algset.author)}</small></span>
+                            </div>
+                        `).join('')}
                     </div>
-                `).join('')}
-            </div>
+                </div>
+            `).join('')}
         </section>
         ${importedMarkup}
         <div class="algset-import-footer">
@@ -1189,10 +1274,8 @@ window.openAlgsetContextMenu = function(event, name, type) {
 };
 
 async function getAlgsetDataForAction(name, type) {
-    if (type === 'default' && !AppState.trainingJSONs[name]) {
-        return fetchDefaultAlgsetData(name);
-    }
-    return AppState.trainingJSONs[name] || null;
+    if (type === 'default') return ensureDefaultTrainingAlgset(name);
+    return getTrainingJSONData(name);
 }
 
 async function handleAlgsetContextAction(action, name, type) {
@@ -1281,11 +1364,12 @@ window.removeAlgset = function(name) {
     showConfirmationModal(
         'Remove Algset',
         `Remove algset "${name}"?`,
-        () => {
+        async () => {
             delete AppState.trainingJSONs[name];
             delete AppState.selectedCasesByAlgset[name];
             if (AppState.activeTrainingJSON === name) {
-                AppState.activeTrainingJSON = Object.keys(AppState.trainingJSONs)[0] || null;
+                AppState.activeTrainingJSON = getFirstAvailableTrainingAlgsetName();
+                if (isDefaultTrainingAlgset(AppState.activeTrainingJSON)) await ensureDefaultTrainingAlgset(AppState.activeTrainingJSON);
                 if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
                 else AppState.selectedCases = [];
             }
@@ -1382,7 +1466,7 @@ window.importAlgset = function() {
 
 // Case selection modal
 function openCaseSelectionModal() {
-    if (!AppState.activeTrainingJSON || !AppState.trainingJSONs[AppState.activeTrainingJSON]) {
+    if (!AppState.activeTrainingJSON || !getTrainingJSONData(AppState.activeTrainingJSON)) {
         showFloatingMessage('Please select an algset first', 'error');
         return;
     }
@@ -1436,7 +1520,7 @@ function renderCaseTree() {
     const treeContainer = document.getElementById('caseTree');
     if (!treeContainer) return;
 
-    const activeData = AppState.trainingJSONs[AppState.activeTrainingJSON] || {};
+    const activeData = getTrainingJSONData(AppState.activeTrainingJSON) || {};
     if (!AppState.caseTreeExpandedByAlgset[AppState.activeTrainingJSON]) {
         AppState.caseTreeExpandedByAlgset[AppState.activeTrainingJSON] = getFolderPaths(activeData);
         saveCaseTreeExpandedState();
@@ -1547,7 +1631,7 @@ function updateCaseSelectionModalHeight() {
         return;
     }
 
-    const activeData = AppState.trainingJSONs[AppState.activeTrainingJSON] || {};
+    const activeData = getTrainingJSONData(AppState.activeTrainingJSON) || {};
     const body = modalContent.querySelector('.modal-body');
     const header = modalContent.querySelector('.modal-header');
     if (!body || !header) return;
@@ -1583,7 +1667,8 @@ window.toggleTreeNode = function (path) {
 
 window.toggleCaseSelection = function (path, checked) {
     const pathParts = path.split('.');
-    const activeData = AppState.trainingJSONs[AppState.activeTrainingJSON];
+    const activeData = getTrainingJSONData(AppState.activeTrainingJSON);
+    if (!activeData) return;
     let current = activeData;
 
     for (const part of pathParts) {
@@ -1605,7 +1690,8 @@ window.toggleCaseSelection = function (path, checked) {
 
 window.toggleFolderSelection = function (path, checked) {
     const pathParts = path.split('.');
-    const activeData = AppState.trainingJSONs[AppState.activeTrainingJSON];
+    const activeData = getTrainingJSONData(AppState.activeTrainingJSON);
+    if (!activeData) return;
     let current = activeData;
 
     for (const part of pathParts) {
@@ -1629,6 +1715,46 @@ window.toggleFolderSelection = function (path, checked) {
     renderCaseTree();
     void generateNewScramble();
 };
+
+function openAlgsetInfoModal() {
+    const algset = getDefaultTrainingAlgset(AppState.activeTrainingJSON);
+    if (!algset || !hasAlgsetInfo(algset.name)) return;
+
+    const info = algset.info || {};
+    const links = Array.isArray(info.links) ? info.links : [];
+    const linkMarkup = links.length ? `
+        <ul class="algset-info-links">
+            ${links.map((link) => `
+                <li>
+                    <a href="${escapeHtml(link.url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label || link.url || 'Resource')}</a>
+                </li>
+            `).join('')}
+        </ul>
+    ` : '';
+
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.innerHTML = `
+        <div class="modal-content help-popup-inner">
+            <div class="modal-header">
+                <h2>${escapeHtml(algset.name)}</h2>
+                <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+            </div>
+            <div class="modal-body help-content algset-info-content">
+                <section class="help-section">
+                    <h3>${escapeHtml(algset.label)}</h3>
+                    <p>${escapeHtml(info.text || '')}</p>
+                    ${linkMarkup}
+                </section>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) modal.remove();
+    });
+}
 
 // Settings modal
 // Settings modal
@@ -1825,14 +1951,16 @@ window.setActiveTrainingJSON = function (name) {
 };
 
 window.removeTrainingJSON = function (name) {
+    if (isDefaultTrainingAlgset(name)) return;
     showConfirmationModal(
         'Remove Training Set',
         `Remove training set "${name}"?`,
-        () => {
+        async () => {
             delete AppState.trainingJSONs[name];
             delete AppState.selectedCasesByAlgset[name];
             if (AppState.activeTrainingJSON === name) {
-                AppState.activeTrainingJSON = Object.keys(AppState.trainingJSONs)[0] || null;
+                AppState.activeTrainingJSON = getFirstAvailableTrainingAlgsetName();
+                if (isDefaultTrainingAlgset(AppState.activeTrainingJSON)) await ensureDefaultTrainingAlgset(AppState.activeTrainingJSON);
                 if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
                 else AppState.selectedCases = [];
             }
