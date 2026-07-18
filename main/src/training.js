@@ -392,14 +392,29 @@ function saveLastScreen(screen) {
 }
 
 // Save selected cases off the UI thread.
-function saveSelectedCases() {
+let selectedCasesSaveTimer = null;
+
+function syncSelectedCasesForActiveAlgset() {
     if (AppState.activeTrainingJSON) {
         AppState.selectedCasesByAlgset[AppState.activeTrainingJSON] = AppState.selectedCases;
     }
+}
+
+function saveSelectedCases() {
+    syncSelectedCasesForActiveAlgset();
     saveLargeValues({
         sq1SelectedCasesByAlgset: AppState.selectedCasesByAlgset,
         sq1SelectedCases: AppState.selectedCases
     });
+}
+
+function scheduleSelectedCasesSave() {
+    syncSelectedCasesForActiveAlgset();
+    clearTimeout(selectedCasesSaveTimer);
+    selectedCasesSaveTimer = setTimeout(() => {
+        selectedCasesSaveTimer = null;
+        saveSelectedCases();
+    }, 250);
 }
 
 function loadCaseTreeExpandedState(persisted = {}) {
@@ -1588,6 +1603,64 @@ function isPathSelected(path) {
     return AppState.selectedCases.some(c => c._path === path);
 }
 
+function escapeAttribute(value) {
+    return escapeHtml(value);
+}
+
+function getTrainingNodeByPath(tree, path) {
+    let current = tree;
+    for (const part of String(path || '').split('.').filter(Boolean)) current = current?.[part];
+    return current || null;
+}
+
+function updateSelectedCaseCountDisplay() {
+    const count = document.getElementById('caseCount');
+    if (count) count.textContent = `${AppState.selectedCases.length} selected`;
+}
+
+function findTreeNodeByPath(type, path) {
+    const attr = type === 'folder' ? 'folderPath' : 'casePath';
+    return [...document.querySelectorAll(`[data-${type}-path]`)].find((node) => node.dataset[attr] === path) || null;
+}
+
+function updateVisibleFolderCheckboxes() {
+    const activeData = getTrainingJSONData(AppState.activeTrainingJSON);
+    if (!activeData) return;
+
+    document.querySelectorAll('[data-folder-path]').forEach((folderNode) => {
+        const path = folderNode.dataset.folderPath;
+        const folderData = getTrainingNodeByPath(activeData, path);
+        const checkbox = folderNode.firstElementChild?.querySelector('.tree-checkbox');
+        if (!folderData || !checkbox) return;
+        const casePaths = getCasePaths(folderData, path.split('.').filter(Boolean));
+        checkbox.checked = casePaths.length > 0 && casePaths.every(isPathSelected);
+        checkbox.indeterminate = false;
+    });
+}
+
+let selectionRefreshTimer = null;
+
+function isCurrentScrambleSelected() {
+    const key = getScrambleCaseKey(AppState.currentScramble);
+    return Boolean(key) && AppState.selectedCases.some((item) => getSelectedCaseKey(item) === key);
+}
+
+function scheduleSelectionRefresh() {
+    clearTimeout(selectionRefreshTimer);
+    selectionRefreshTimer = setTimeout(() => {
+        selectionRefreshTimer = null;
+        if (AppState.selectedCases.length === 0) {
+            AppState.currentScramble = null;
+            AppState.timerState = 'idle';
+            renderApp();
+            return;
+        }
+        if (!AppState.currentScramble || !isCurrentScrambleSelected()) {
+            void generateNewScramble();
+        }
+    }, 180);
+}
+
 function renderTreeNode(node, path, depth = 0, options = {}) {
     let html = '';
 
@@ -1600,7 +1673,7 @@ function renderTreeNode(node, path, depth = 0, options = {}) {
         if (isCase) {
             const isSelected = isPathSelected(pathString);
             html += `
-                        <div class="tree-node tree-node-case" style="--tree-depth:${depth};">
+                        <div class="tree-node tree-node-case" data-case-path="${escapeAttribute(pathString)}" style="--tree-depth:${depth};">
                             <div class="tree-node-header">
                                 <input type="checkbox" class="tree-checkbox" 
                                     ${isSelected ? 'checked' : ''} 
@@ -1618,7 +1691,7 @@ function renderTreeNode(node, path, depth = 0, options = {}) {
             const isExpanded = options.forceExpanded || expandedPaths.includes(pathString);
             const folderWeight = Math.max(600, Math.round(900 - (1 - (1 / (depth + 1))) * 380));
             html += `
-                        <div class="tree-node tree-node-folder" style="--tree-depth:${depth};">
+                        <div class="tree-node tree-node-folder" data-folder-path="${escapeAttribute(pathString)}" style="--tree-depth:${depth};">
                             <div class="tree-node-header" onclick='toggleTreeNode(${pathArg})'>
                                 <input type="checkbox" class="tree-checkbox" 
                                     ${allSelected ? 'checked' : ''} 
@@ -1683,14 +1756,10 @@ window.toggleTreeNode = function (path) {
 };
 
 window.toggleCaseSelection = function (path, checked) {
-    const pathParts = path.split('.');
     const activeData = getTrainingJSONData(AppState.activeTrainingJSON);
     if (!activeData) return;
-    let current = activeData;
-
-    for (const part of pathParts) {
-        current = current[part];
-    }
+    const current = getTrainingNodeByPath(activeData, path);
+    if (!current?.caseName) return;
 
     if (checked) {
         if (!AppState.selectedCases.some(c => c._path === path)) {
@@ -1699,38 +1768,43 @@ window.toggleCaseSelection = function (path, checked) {
     } else {
         AppState.selectedCases = AppState.selectedCases.filter(c => c._path !== path);
     }
-    saveSelectedCases();
-    document.getElementById('caseCount').textContent = `${AppState.selectedCases.length} selected`;
-    renderCaseTree();
-    void generateNewScramble();
+    scheduleSelectedCasesSave();
+    updateSelectedCaseCountDisplay();
+    updateVisibleFolderCheckboxes();
+    scheduleSelectionRefresh();
 };
 
 window.toggleFolderSelection = function (path, checked) {
-    const pathParts = path.split('.');
+    const pathParts = path.split('.').filter(Boolean);
     const activeData = getTrainingJSONData(AppState.activeTrainingJSON);
     if (!activeData) return;
-    let current = activeData;
-
-    for (const part of pathParts) {
-        current = current[part];
-    }
+    const current = getTrainingNodeByPath(activeData, path);
+    if (!current) return;
 
     const paths = getCasePaths(current, pathParts);
     if (checked) {
+        const selectedPaths = new Set(AppState.selectedCases.map(c => c._path));
         for (const casePath of paths) {
-            if (!AppState.selectedCases.some(c => c._path === casePath)) {
-                let caseNode = activeData;
-                for (const part of casePath.split('.')) caseNode = caseNode[part];
+            if (!selectedPaths.has(casePath)) {
+                const caseNode = getTrainingNodeByPath(activeData, casePath);
+                if (!caseNode?.caseName) continue;
                 AppState.selectedCases.push({ ...caseNode, _path: casePath, _jsonName: AppState.activeTrainingJSON });
+                selectedPaths.add(casePath);
             }
         }
     } else {
-        AppState.selectedCases = AppState.selectedCases.filter(c => !paths.includes(c._path));
+        const pathSet = new Set(paths);
+        AppState.selectedCases = AppState.selectedCases.filter(c => !pathSet.has(c._path));
     }
-    saveSelectedCases();
-    document.getElementById('caseCount').textContent = `${AppState.selectedCases.length} selected`;
-    renderCaseTree();
-    void generateNewScramble();
+
+    const folderNode = findTreeNodeByPath('folder', path);
+    folderNode?.querySelectorAll('.tree-node-case .tree-checkbox').forEach((checkbox) => {
+        checkbox.checked = checked;
+    });
+    scheduleSelectedCasesSave();
+    updateSelectedCaseCountDisplay();
+    updateVisibleFolderCheckboxes();
+    scheduleSelectionRefresh();
 };
 
 function openAlgsetInfoModal() {
