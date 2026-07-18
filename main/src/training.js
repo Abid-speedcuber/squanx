@@ -531,15 +531,24 @@ function railButton(action, icon, label) {
 // Render main app structure
 function renderApp() {
     const app = document.getElementById('app');
-    const currentScramble = escapeHtml(AppState.currentScramble?.scramble || 'Scramble will show up here');
+    const hasActiveAlgset = Boolean(AppState.activeTrainingJSON);
+    const hasSelectedCases = AppState.selectedCases.length > 0;
+    const scramblePrompt = !hasActiveAlgset
+        ? 'Select algset to train'
+        : !hasSelectedCases
+            ? 'Select cases to train'
+            : 'Scramble will show up here';
+    const currentScramble = escapeHtml(AppState.currentScramble?.scramble || scramblePrompt);
     const previousScramble = AppState.previousScramble
         ? escapeHtml(`${AppState.previousScramble.scramble} (${AppState.previousScramble.pathLabel || AppState.previousScramble.caseName || 'Unknown case'})`)
         : 'Last scramble will show up here';
-    const activeAlgset = escapeHtml(AppState.activeTrainingJSON || 'Select Algset');
+    const activeAlgset = escapeHtml(getAlgsetDisplayLabel(AppState.activeTrainingJSON));
     const removeLastDisabled = canRemoveLastSolve() ? '' : 'disabled';
     const algsetInfoButton = hasAlgsetInfo(AppState.activeTrainingJSON)
         ? railButton('algset-info', 'rail-icon-info', 'Algset info')
         : '';
+    const scrambleAction = !hasActiveAlgset ? 'select-algset' : !hasSelectedCases ? 'select-cases' : '';
+    const scrambleActionClass = scrambleAction ? ' scramble-action' : '';
 
     app.innerHTML = `
         ${trainerIconSprite()}
@@ -578,7 +587,7 @@ function renderApp() {
                 <div class="content">
                     <div class="top-bar">
                         <div class="scramble-row">
-                            <div class="bar-scramble" id="scrambleDisplay">${currentScramble}</div>
+                            <div class="bar-scramble${scrambleActionClass}" id="scrambleDisplay" data-scramble-action="${scrambleAction}">${currentScramble}</div>
                         </div>
                         <div class="scramble-controls">
                             <button class="bar-btn" id="prevScrambleBtn" ${AppState.previousScramble ? '' : 'disabled'}>← Previous</button>
@@ -713,6 +722,11 @@ function setupEventListeners() {
     });
 
     document.getElementById('selectAlgsetBtn')?.addEventListener('click', openAlgsetSelectorModal);
+    document.getElementById('scrambleDisplay')?.addEventListener('click', () => {
+        const action = document.getElementById('scrambleDisplay')?.dataset.scrambleAction;
+        if (action === 'select-algset') openAlgsetSelectorModal();
+        if (action === 'select-cases') openCaseSelectionModal();
+    });
     document.getElementById('prevScrambleBtn')?.addEventListener('click', () => {
         if (AppState.scrambleHistory.length > 0) {
             AppState.currentScramble = AppState.scrambleHistory.pop();
@@ -878,6 +892,9 @@ window.importAllAppData = async function() {
         saveCaseTreeExpandedState();
         saveSessionTimes();
         saveSettings();
+        AppState.currentScramble = null;
+        AppState.previousScramble = null;
+        AppState.scrambleHistory = [];
         applyTheme();
         document.querySelector('.modal')?.remove();
         renderApp();
@@ -1477,7 +1494,7 @@ function openCaseSelectionModal() {
     modal.innerHTML = `
         <div class="modal-content case-selection-content">
             <div class="modal-header">
-                <h2>Select Cases - ${AppState.activeTrainingJSON}</h2>
+                <h2>Select Cases - ${escapeHtml(getAlgsetDisplayLabel(AppState.activeTrainingJSON))}</h2>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
             <div class="modal-body">
@@ -1737,7 +1754,7 @@ function openAlgsetInfoModal() {
     modal.innerHTML = `
         <div class="modal-content help-popup-inner">
             <div class="modal-header">
-                <h2>${escapeHtml(algset.name)}</h2>
+                <h2>${escapeHtml(getAlgsetDisplayLabel(algset.name))}</h2>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
             <div class="modal-body help-content algset-info-content">

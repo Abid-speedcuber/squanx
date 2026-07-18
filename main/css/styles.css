@@ -405,6 +405,10 @@ body.theme-light .squango-go {
     color: var(--divider-strong);
 }
 
+.bar-scramble.scramble-action {
+    cursor: pointer;
+}
+
 .scramble-controls {
     margin-top: 10px;
     display: flex;
