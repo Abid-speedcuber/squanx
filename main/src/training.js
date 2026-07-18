@@ -948,6 +948,29 @@ let spacePressed = false;
 let timerHoldStartTime = 0;
 let timerPreparingInterval = null;
 
+function isEditableEventTarget(target) {
+    if (!target || target === document || target === window) return false;
+    return Boolean(target.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]'))
+        || Boolean(target.isContentEditable);
+}
+
+function isInteractiveNonTimerTarget(target) {
+    if (!target || target === document || target === window) return false;
+    if (isEditableEventTarget(target)) return true;
+    return Boolean(target.closest?.('button, a, input, textarea, select, [role="button"], [role="menuitem"]'));
+}
+
+function isTimerKeyboardContext(event) {
+    if (isEditableEventTarget(event.target) || isEditableEventTarget(document.activeElement)) return false;
+    if (document.querySelector('.modal.active') || document.getElementById('jsonCreatorFullscreen')) return false;
+
+    const timerZone = document.getElementById('timerZone');
+    if (!timerZone || timerZone.classList.contains('disabled')) return false;
+    if (isInteractiveNonTimerTarget(event.target) || isInteractiveNonTimerTarget(document.activeElement)) return false;
+
+    return true;
+}
+
 function handleTimerMouseDown() {
     if (AppState.selectedCases.length === 0) return;
     if (AppState.timerState === 'running') return;
@@ -996,7 +1019,7 @@ function handleTimerMouseUp() {
 
 function handleTimerTouchStart(e) {
     e.preventDefault();
-    handleTimerMouseDown();
+    handleTimerMouseDown(e);
 }
 
 function handleTimerTouchEnd(e) {
@@ -1005,6 +1028,7 @@ function handleTimerTouchEnd(e) {
 }
 
 function handleKeyDown(e) {
+    if (!isTimerKeyboardContext(e)) return;
     if (e.code === 'Space' && !e.repeat) {
         e.preventDefault();
         if (AppState.selectedCases.length === 0) return;
@@ -1041,6 +1065,8 @@ function handleKeyDown(e) {
 }
 
 function handleKeyUp(e) {
+    if (isEditableEventTarget(e.target) || isEditableEventTarget(document.activeElement)) return;
+    if (!isTimerKeyboardContext(e) && !spacePressed) return;
     if (e.code === 'Space') {
         e.preventDefault();
         if (spacePressed) {
