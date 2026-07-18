@@ -144,6 +144,7 @@ const DEFAULT_ALGSET = {
 const DEFAULT_TRAINING_ALGSETS = [
     { file: 'pll-plus-1.json', name: 'Lin- PLL+1', label: 'Lin- PLL+1', author: 'Amalogu' },
     { file: 'SB.json', name: 'Lin- SB', label: 'Lin- SB', author: 'Amalogu' },
+    { file: 'linm2pll.json', name: 'Lin-M2+PLL', label: 'Lin-M2+PLL', author: 'Woofle' },
     { file: 'EOCP.json', name: 'EOCP', label: 'EOCP', author: 'Abid' }
 ];
 
