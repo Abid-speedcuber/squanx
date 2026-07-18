@@ -30,6 +30,7 @@ const AppState = {
     developingJSONs: {}, // Multiple developing JSONs for JSON creator
     activeDevelopingJSON: 'default', // Currently selected root in JSON creator
     sessionTimes: {}, // { algsetName: [{caseName: string, time: number}] }
+    caseIconModesByAlgset: {},
     settings: {
         visualizationSize: 200,
         theme: 'dark', // 'light' or 'dark'
@@ -458,6 +459,24 @@ function saveSessionTimes() {
     saveLargeValue('sq1SessionTimes', AppState.sessionTimes);
 }
 
+function getValidCaseIconMode(mode) {
+    return ['none', 'top', 'bottom', 'both'].includes(mode) ? mode : 'both';
+}
+
+function loadCaseIconModes(persisted = {}) {
+    if (persisted.sq1CaseIconModesByAlgset && typeof persisted.sq1CaseIconModesByAlgset === 'object') {
+        AppState.caseIconModesByAlgset = Object.fromEntries(
+            Object.entries(persisted.sq1CaseIconModesByAlgset)
+                .filter(([, value]) => typeof value === 'string')
+                .map(([name, value]) => [name, getValidCaseIconMode(value)])
+        );
+    }
+}
+
+function saveCaseIconModes() {
+    saveLargeValue('sq1CaseIconModesByAlgset', AppState.caseIconModesByAlgset);
+}
+
 // Load settings from localStorage
 function loadSettings() {
     const settings = readLocalJSON('sq1Settings', null);
@@ -486,6 +505,7 @@ async function initApp() {
     }
     loadSelectedCases(persisted);
     loadSessionTimes(persisted);
+    loadCaseIconModes(persisted);
     applyTheme();
     
     const lastScreen = loadLastScreen();
@@ -1558,10 +1578,10 @@ function openCaseSelectionModal() {
                 <label class="case-icon-control">
                     <span>Icon</span>
                     <select class="settings-input case-icon-select" onchange="changeCaseIconMode(this.value)">
-                        <option value="none" ${AppState.settings.caseIconMode === 'none' ? 'selected' : ''}>None</option>
-                        <option value="top" ${AppState.settings.caseIconMode === 'top' ? 'selected' : ''}>Top</option>
-                        <option value="bottom" ${AppState.settings.caseIconMode === 'bottom' ? 'selected' : ''}>Bottom</option>
-                        <option value="both" ${AppState.settings.caseIconMode === 'both' ? 'selected' : ''}>Both</option>
+                        <option value="none" ${getCaseIconMode(AppState.activeTrainingJSON) === 'none' ? 'selected' : ''}>None</option>
+                        <option value="top" ${getCaseIconMode(AppState.activeTrainingJSON) === 'top' ? 'selected' : ''}>Top</option>
+                        <option value="bottom" ${getCaseIconMode(AppState.activeTrainingJSON) === 'bottom' ? 'selected' : ''}>Bottom</option>
+                        <option value="both" ${getCaseIconMode(AppState.activeTrainingJSON) === 'both' ? 'selected' : ''}>Both</option>
                     </select>
                 </label>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
@@ -1658,9 +1678,9 @@ function isPathSelected(path) {
     return AppState.selectedCases.some(c => c._path === path);
 }
 
-function getCaseIconMode() {
-    const mode = AppState.settings.caseIconMode;
-    return ['none', 'top', 'bottom', 'both'].includes(mode) ? mode : 'both';
+function getCaseIconMode(algsetName = AppState.activeTrainingJSON) {
+    const mode = AppState.caseIconModesByAlgset[algsetName];
+    return getValidCaseIconMode(mode);
 }
 
 function getCaseIconHex(item) {
@@ -1893,9 +1913,14 @@ window.toggleFolderSelection = function (path, checked) {
 };
 
 window.changeCaseIconMode = function(mode) {
-    AppState.settings.caseIconMode = ['none', 'top', 'bottom', 'both'].includes(mode) ? mode : 'both';
+    const normalizedMode = getValidCaseIconMode(mode);
+    if (AppState.activeTrainingJSON) {
+        AppState.caseIconModesByAlgset[AppState.activeTrainingJSON] = normalizedMode;
+        saveCaseIconModes();
+    }
+    AppState.settings.caseIconMode = normalizedMode;
     saveSettings();
-    if (AppState.settings.caseIconMode !== 'none' && !caseIconRenderer) {
+    if (normalizedMode !== 'none' && !caseIconRenderer) {
         void ensureCaseIconRenderer().then(() => renderCaseTree());
         return;
     }
