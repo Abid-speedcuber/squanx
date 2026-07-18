@@ -129,6 +129,22 @@ const hexToPieceMapButBackwards = {
   'WO': 'e', 'WOB': 'ff', 'WB': 'c', 'WBR': 'dd'
 };
 
+const PLACEHOLDER_PIECE_COLORS = {
+  // Edge placeholders. Tune inner/outer independently.
+  E: { inner: '#aaaaaa', outer: '#aaaaaa' },
+  W: { inner: '#373737', outer: '#373737' },
+  Y: { inner: '#FFFFFF', outer: '#FFFFFF' },
+
+  // Corner placeholders. Tune each visible face independently.
+  C: { top: '#aaaaaa', left: '#aaaaaa', right: '#aaaaaa' },
+  X: { top: '#373737', left: '#373737', right: '#373737' },
+  Z: { top: '#FFFFFF', left: '#FFFFFF', right: '#FFFFFF' }
+};
+
+function isThisHexPieceACornerPlease(piece) {
+  return ['C', 'X', 'Z'].includes(piece) || ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(String(piece || '').toLowerCase());
+}
+
 // === BASIC HELPER FUNCTIONS ===
 function canYouRotateThisStringPlease(str, rotAmount) {
   const len = str.length;
@@ -433,6 +449,8 @@ function gimmeTheAngleForThisSlotPlease(slot, angleArray) {
 // === COLOR MAPPING ===
 function whatColorIsThisEdgePiecePlease(hexChar, colorScheme) {
   const { topColor, bottomColor, frontColor, rightColor, backColor, leftColor } = colorScheme;
+  if (PLACEHOLDER_PIECE_COLORS[hexChar]?.inner) return PLACEHOLDER_PIECE_COLORS[hexChar];
+  if (hexChar === 'R') return { inner: 'transparent', outer: 'transparent' };
   
   switch (hexChar.toLowerCase()) {
     case '0': return { inner: topColor, outer: backColor };
@@ -443,13 +461,12 @@ function whatColorIsThisEdgePiecePlease(hexChar, colorScheme) {
     case 'a': return { inner: bottomColor, outer: frontColor };
     case 'c': return { inner: bottomColor, outer: leftColor };
     case 'e': return { inner: bottomColor, outer: backColor };
-    case 'E': return { inner: '#888888', outer: '#888888' };
-    case 'R': return { inner: 'transparent', outer: 'transparent' };
     default: return { inner: '#4ecdc4', outer: '#4ecdc4' };
   }
 }
 
 function whatAreTheCornerColorLettersPlease(hexChar) {
+  if (PLACEHOLDER_PIECE_COLORS[hexChar]?.top) return PLACEHOLDER_PIECE_COLORS[hexChar];
   switch ((hexChar || '').toLowerCase()) {
     case '1': return { top: 'y', left: 'b', right: 'o' };
     case '3': return { top: 'y', left: 'r', right: 'b' };
@@ -459,13 +476,13 @@ function whatAreTheCornerColorLettersPlease(hexChar) {
     case 'b': return { top: 'w', left: 'r', right: 'g' };
     case 'd': return { top: 'w', left: 'b', right: 'r' };
     case 'f': return { top: 'w', left: 'o', right: 'b' };
-    case 'C': return { top: '#888888', left: '#888888', right: '#888888' };
     default: return { top: '#4ecdc4', left: '#4ecdc4', right: '#4ecdc4' };
   }
 }
 
 function convertColorLetterToHexCodePlease(colorLetter, colorScheme) {
   if (!colorLetter) return '#cccccc';
+  if (/^(#|rgb|hsl|var\()/i.test(String(colorLetter))) return colorLetter;
   const { topColor, bottomColor, frontColor, rightColor, backColor, leftColor } = colorScheme;
   
   switch (colorLetter.toLowerCase()) {
@@ -510,8 +527,8 @@ function pleaseCreateOnePieceSVGForMe(slot, pieceHex, centerX, centerY, centerAn
     
     const edgeColors = whatColorIsThisEdgePiecePlease(pieceHex, colorScheme);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointMidA, pointA, pointB, pointMidB])}" fill="${edgeColors.outer}" stroke="#333" stroke-width="${strokeMedium}"/>`;
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointMidA, pointMidB])}" fill="${edgeColors.inner}" stroke="#333" stroke-width="${strokeThin}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointMidA, pointA, pointB, pointMidB])}" fill="${edgeColors.outer}" stroke="#000" stroke-width="${strokeMedium}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointMidA, pointMidB])}" fill="${edgeColors.inner}" stroke="#000" stroke-width="${strokeThin}"/>`;
     
   } else if (slot.type === 'corner') {
     const pointInner = polarToCartesianButWithFunnyName(centerX, centerY, radiusInner, centerAngle);
@@ -526,11 +543,11 @@ function pleaseCreateOnePieceSVGForMe(slot, pieceHex, centerX, centerY, centerAn
     
     const colors = gimmeCornerColorsAsHexCodesPlease(pieceHex, isBottomLayer, colorScheme);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointSmallBottom, pointSmallLeft])}" fill="${colors.left}" stroke="#333" stroke-width="${strokeMedium}"/>`;
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointSmallRight, pointSmallBottom, pointApex, pointOuterRight])}" fill="${colors.right}" stroke="#333" stroke-width="${strokeMedium}"/>`;
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointSmallLeft, pointSmallBottom, pointSmallRight])}" fill="${colors.top}" stroke="#333" stroke-width="${strokeThin}"/>`;
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointOuterRight])}" fill="none" stroke="#333" stroke-width="${strokeMedium}"/>`;
-    svgMarkup += `<line x1="${pointApex.x.toFixed(2)}" y1="${pointApex.y.toFixed(2)}" x2="${pointSmallBottom.x.toFixed(2)}" y2="${pointSmallBottom.y.toFixed(2)}" stroke="#333" stroke-width="${strokeMedium}" stroke-linecap="round"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointSmallBottom, pointSmallLeft])}" fill="${colors.left}" stroke="#000" stroke-width="${strokeMedium}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointSmallRight, pointSmallBottom, pointApex, pointOuterRight])}" fill="${colors.right}" stroke="#000" stroke-width="${strokeMedium}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointSmallLeft, pointSmallBottom, pointSmallRight])}" fill="${colors.top}" stroke="#000" stroke-width="${strokeThin}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointOuterRight])}" fill="none" stroke="#000" stroke-width="${strokeMedium}"/>`;
+    svgMarkup += `<line x1="${pointApex.x.toFixed(2)}" y1="${pointApex.y.toFixed(2)}" x2="${pointSmallBottom.x.toFixed(2)}" y2="${pointSmallBottom.y.toFixed(2)}" stroke="#000" stroke-width="${strokeMedium}" stroke-linecap="round"/>`;
     
   } else if (slot.type === 'half-corner') {
     const halfInnerAngle = 15;
@@ -540,7 +557,7 @@ function pleaseCreateOnePieceSVGForMe(slot, pieceHex, centerX, centerY, centerAn
     const pointOuterLeft = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle + halfInnerAngle);
     
     const fillAttribute = whatColorIsThisHalfCornerPlease(pieceHex);
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterRight, pointApex, pointOuterLeft])}" ${fillAttribute} stroke="#333" stroke-width="${strokeThin}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterRight, pointApex, pointOuterLeft])}" ${fillAttribute} stroke="#000" stroke-width="${strokeThin}"/>`;
   }
   
   return svgMarkup;
@@ -560,7 +577,7 @@ function pleaseGenerateTheFullSVGFromHexNotation(hexScrambleCode, equatorChar, d
   for (let i = 0; i < 12; i++) {
     if (scrambleIdx === 12) scrambleIdx++;
     const piece = hexScrambleCode[scrambleIdx];
-    const isCorner = ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(piece.toLowerCase());
+    const isCorner = isThisHexPieceACornerPlease(piece);
     shapeArray[i] = isCorner ? 1 : 0;
     scrambleIdx++;
   }
@@ -569,7 +586,7 @@ function pleaseGenerateTheFullSVGFromHexNotation(hexScrambleCode, equatorChar, d
   scrambleIdx = 13;
   for (let i = 12; i < 24; i++) {
     const piece = hexScrambleCode[scrambleIdx];
-    const isCorner = ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(piece.toLowerCase());
+    const isCorner = isThisHexPieceACornerPlease(piece);
     shapeArray[i] = isCorner ? 1 : 0;
     scrambleIdx++;
   }
@@ -602,9 +619,11 @@ function pleaseGenerateTheFullSVGFromHexNotation(hexScrambleCode, equatorChar, d
   htmlOutput += `<svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}">`;
   htmlOutput += `<circle cx="${centerX}" cy="${centerY}" r="${ringRadius}" fill="${colorScheme.circleColor}" stroke="rgba(0,0,0,0.08)" stroke-width="${strokeRing}"/>`;
   
-  const linePoint1Left = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 75);
-  const linePoint2Left = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 255);
-  htmlOutput += `<line x1="${linePoint1Left.x}" y1="${linePoint1Left.y}" x2="${linePoint2Left.x}" y2="${linePoint2Left.y}" stroke="${colorScheme.dividerColor}" stroke-width="${strokeLine}"/>`;
+  if (!colorScheme.hideDivider) {
+    const linePoint1Left = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 75);
+    const linePoint2Left = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 255);
+    htmlOutput += `<line x1="${linePoint1Left.x}" y1="${linePoint1Left.y}" x2="${linePoint2Left.x}" y2="${linePoint2Left.y}" stroke="${colorScheme.dividerColor}" stroke-width="${strokeLine}"/>`;
+  }
   htmlOutput += `<circle cx="${centerX}" cy="${centerY}" r="${unit10vh * 0.05}" fill="rgba(0,0,0,0.06)"/>`;
   
   const leftLayerAngles = Array.from({ length: 12 }, (_, j) => 90 + j * 30);
@@ -623,9 +642,11 @@ function pleaseGenerateTheFullSVGFromHexNotation(hexScrambleCode, equatorChar, d
   htmlOutput += `<svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}" style="margin-left: ${marginLeft}px;">`;
   htmlOutput += `<circle cx="${centerX}" cy="${centerY}" r="${ringRadius}" fill="${colorScheme.circleColor}" stroke="rgba(0,0,0,0.08)" stroke-width="${strokeRing}"/>`;
   
-  const linePoint1Right = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 105);
-  const linePoint2Right = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 285);
-  htmlOutput += `<line x1="${linePoint1Right.x}" y1="${linePoint1Right.y}" x2="${linePoint2Right.x}" y2="${linePoint2Right.y}" stroke="${colorScheme.dividerColor}" stroke-width="${strokeLine}"/>`;
+  if (!colorScheme.hideDivider) {
+    const linePoint1Right = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 105);
+    const linePoint2Right = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 285);
+    htmlOutput += `<line x1="${linePoint1Right.x}" y1="${linePoint1Right.y}" x2="${linePoint2Right.x}" y2="${linePoint2Right.y}" stroke="${colorScheme.dividerColor}" stroke-width="${strokeLine}"/>`;
+  }
   htmlOutput += `<circle cx="${centerX}" cy="${centerY}" r="${unit10vh * 0.05}" fill="rgba(0,0,0,0.06)"/>`;
   
   const rightLayerAngles = Array.from({ length: 12 }, (_, j) => 300 + j * 30);
@@ -666,7 +687,7 @@ function pleaseCreateOneShapeOutlineSVGForMe(slot, centerX, centerY, centerAngle
     const pointA = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle - halfAngle);
     const pointB = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle + halfAngle);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointA, pointB])}" fill="${edgeFill}" stroke="#333" stroke-width="${strokeWidth}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointA, pointB])}" fill="${edgeFill}" stroke="#000" stroke-width="${strokeWidth}"/>`;
     
   } else if (slot.type === 'corner') {
     const pointInner = polarToCartesianButWithFunnyName(centerX, centerY, radiusInner, centerAngle);
@@ -674,7 +695,7 @@ function pleaseCreateOneShapeOutlineSVGForMe(slot, centerX, centerY, centerAngle
     const pointApex = polarToCartesianButWithFunnyName(centerX, centerY, radiusApex, centerAngle);
     const pointOuterLeft = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle + halfAngle);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointOuterRight])}" fill="${cornerFill}" stroke="#333" stroke-width="${strokeWidth}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointOuterRight])}" fill="${cornerFill}" stroke="#000" stroke-width="${strokeWidth}"/>`;
     
   } else if (slot.type === 'half-corner') {
     const halfInnerAngle = 15;
@@ -683,7 +704,7 @@ function pleaseCreateOneShapeOutlineSVGForMe(slot, centerX, centerY, centerAngle
     const pointApex = polarToCartesianButWithFunnyName(centerX, centerY, radiusApex, centerAngle);
     const pointOuterLeft = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle + halfInnerAngle);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterRight, pointApex, pointOuterLeft])}" fill="${cornerFill}" stroke="#333" stroke-width="${strokeWidth}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterRight, pointApex, pointOuterLeft])}" fill="${cornerFill}" stroke="#000" stroke-width="${strokeWidth}"/>`;
   }
   
   return svgMarkup;
@@ -701,7 +722,7 @@ function pleaseGenerateShapeVisualizationSVG(hexScrambleCode, size, edgeFill, co
   for (let i = 0; i < 12; i++) {
     if (scrambleIdx === 12) scrambleIdx++;
     const piece = hexScrambleCode[scrambleIdx];
-    const isCorner = ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(piece.toLowerCase());
+    const isCorner = isThisHexPieceACornerPlease(piece);
     shapeArray[i] = isCorner ? 1 : 0;
     scrambleIdx++;
   }
@@ -710,7 +731,7 @@ function pleaseGenerateShapeVisualizationSVG(hexScrambleCode, size, edgeFill, co
   scrambleIdx = 13;
   for (let i = 12; i < 24; i++) {
     const piece = hexScrambleCode[scrambleIdx];
-    const isCorner = ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(piece.toLowerCase());
+    const isCorner = isThisHexPieceACornerPlease(piece);
     shapeArray[i] = isCorner ? 1 : 0;
     scrambleIdx++;
   }
@@ -828,14 +849,15 @@ function visualizeCubeShapeOutlinesPlease(input, size = 200, edgeFill = 'transpa
  */
 function visualizeFromHexCodePlease(hexCode, size = 200, colors = {}, ringDistance = 5) {
   const colorScheme = {
-    topColor: colors.topColor || '#000000',
+    topColor: colors.topColor || '#373737',
     bottomColor: colors.bottomColor || '#FFFFFF',
     frontColor: colors.frontColor || '#CC0000',
     rightColor: colors.rightColor || '#00AA00',
     backColor: colors.backColor || '#FF8C00',
     leftColor: colors.leftColor || '#0066CC',
     dividerColor: colors.dividerColor || '#7a0000',
-    circleColor: colors.circleColor || 'transparent'
+    circleColor: colors.circleColor || 'transparent',
+    hideDivider: Boolean(colors.hideDivider)
   };
   
   return pleaseGenerateTheFullSVGFromHexNotation(hexCode, hexCode[12], size, colorScheme, ringDistance);
@@ -850,14 +872,15 @@ function visualizeFromHexCodePlease(hexCode, size = 200, colors = {}, ringDistan
  */
 function visualizeFromScrambleNotationPlease(scramble, size = 200, colors = {}, ringDistance = 5) {
   const colorScheme = {
-    topColor: colors.topColor || '#000000',
+    topColor: colors.topColor || '#373737',
     bottomColor: colors.bottomColor || '#FFFFFF',
     frontColor: colors.frontColor || '#CC0000',
     rightColor: colors.rightColor || '#00AA00',
     backColor: colors.backColor || '#FF8C00',
     leftColor: colors.leftColor || '#0066CC',
     dividerColor: colors.dividerColor || '#7a0000',
-    circleColor: colors.circleColor || 'transparent'
+    circleColor: colors.circleColor || 'transparent',
+    hideDivider: Boolean(colors.hideDivider)
   };
   
   const cubeState = applyScrambleToCubePlease(scramble);
