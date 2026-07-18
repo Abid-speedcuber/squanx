@@ -131,13 +131,13 @@ const hexToPieceMapButBackwards = {
 
 const PLACEHOLDER_PIECE_COLORS = {
   // Edge placeholders. Tune inner/outer independently.
-  E: { inner: '#888888', outer: '#888888' },
-  W: { inner: '#000000', outer: '#000000' },
+  E: { inner: '#aaaaaa', outer: '#aaaaaa' },
+  W: { inner: '#373737', outer: '#373737' },
   Y: { inner: '#FFFFFF', outer: '#FFFFFF' },
 
   // Corner placeholders. Tune each visible face independently.
-  C: { top: '#888888', left: '#888888', right: '#888888' },
-  X: { top: '#000000', left: '#000000', right: '#000000' },
+  C: { top: '#aaaaaa', left: '#aaaaaa', right: '#aaaaaa' },
+  X: { top: '#373737', left: '#373737', right: '#373737' },
   Z: { top: '#FFFFFF', left: '#FFFFFF', right: '#FFFFFF' }
 };
 
@@ -527,8 +527,8 @@ function pleaseCreateOnePieceSVGForMe(slot, pieceHex, centerX, centerY, centerAn
     
     const edgeColors = whatColorIsThisEdgePiecePlease(pieceHex, colorScheme);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointMidA, pointA, pointB, pointMidB])}" fill="${edgeColors.outer}" stroke="#333" stroke-width="${strokeMedium}"/>`;
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointMidA, pointMidB])}" fill="${edgeColors.inner}" stroke="#333" stroke-width="${strokeThin}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointMidA, pointA, pointB, pointMidB])}" fill="${edgeColors.outer}" stroke="#000" stroke-width="${strokeMedium}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointMidA, pointMidB])}" fill="${edgeColors.inner}" stroke="#000" stroke-width="${strokeThin}"/>`;
     
   } else if (slot.type === 'corner') {
     const pointInner = polarToCartesianButWithFunnyName(centerX, centerY, radiusInner, centerAngle);
@@ -543,11 +543,11 @@ function pleaseCreateOnePieceSVGForMe(slot, pieceHex, centerX, centerY, centerAn
     
     const colors = gimmeCornerColorsAsHexCodesPlease(pieceHex, isBottomLayer, colorScheme);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointSmallBottom, pointSmallLeft])}" fill="${colors.left}" stroke="#333" stroke-width="${strokeMedium}"/>`;
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointSmallRight, pointSmallBottom, pointApex, pointOuterRight])}" fill="${colors.right}" stroke="#333" stroke-width="${strokeMedium}"/>`;
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointSmallLeft, pointSmallBottom, pointSmallRight])}" fill="${colors.top}" stroke="#333" stroke-width="${strokeThin}"/>`;
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointOuterRight])}" fill="none" stroke="#333" stroke-width="${strokeMedium}"/>`;
-    svgMarkup += `<line x1="${pointApex.x.toFixed(2)}" y1="${pointApex.y.toFixed(2)}" x2="${pointSmallBottom.x.toFixed(2)}" y2="${pointSmallBottom.y.toFixed(2)}" stroke="#333" stroke-width="${strokeMedium}" stroke-linecap="round"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointSmallBottom, pointSmallLeft])}" fill="${colors.left}" stroke="#000" stroke-width="${strokeMedium}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointSmallRight, pointSmallBottom, pointApex, pointOuterRight])}" fill="${colors.right}" stroke="#000" stroke-width="${strokeMedium}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointSmallLeft, pointSmallBottom, pointSmallRight])}" fill="${colors.top}" stroke="#000" stroke-width="${strokeThin}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointOuterRight])}" fill="none" stroke="#000" stroke-width="${strokeMedium}"/>`;
+    svgMarkup += `<line x1="${pointApex.x.toFixed(2)}" y1="${pointApex.y.toFixed(2)}" x2="${pointSmallBottom.x.toFixed(2)}" y2="${pointSmallBottom.y.toFixed(2)}" stroke="#000" stroke-width="${strokeMedium}" stroke-linecap="round"/>`;
     
   } else if (slot.type === 'half-corner') {
     const halfInnerAngle = 15;
@@ -557,7 +557,7 @@ function pleaseCreateOnePieceSVGForMe(slot, pieceHex, centerX, centerY, centerAn
     const pointOuterLeft = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle + halfInnerAngle);
     
     const fillAttribute = whatColorIsThisHalfCornerPlease(pieceHex);
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterRight, pointApex, pointOuterLeft])}" ${fillAttribute} stroke="#333" stroke-width="${strokeThin}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterRight, pointApex, pointOuterLeft])}" ${fillAttribute} stroke="#000" stroke-width="${strokeThin}"/>`;
   }
   
   return svgMarkup;
@@ -687,7 +687,7 @@ function pleaseCreateOneShapeOutlineSVGForMe(slot, centerX, centerY, centerAngle
     const pointA = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle - halfAngle);
     const pointB = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle + halfAngle);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointA, pointB])}" fill="${edgeFill}" stroke="#333" stroke-width="${strokeWidth}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointA, pointB])}" fill="${edgeFill}" stroke="#000" stroke-width="${strokeWidth}"/>`;
     
   } else if (slot.type === 'corner') {
     const pointInner = polarToCartesianButWithFunnyName(centerX, centerY, radiusInner, centerAngle);
@@ -695,7 +695,7 @@ function pleaseCreateOneShapeOutlineSVGForMe(slot, centerX, centerY, centerAngle
     const pointApex = polarToCartesianButWithFunnyName(centerX, centerY, radiusApex, centerAngle);
     const pointOuterLeft = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle + halfAngle);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointOuterRight])}" fill="${cornerFill}" stroke="#333" stroke-width="${strokeWidth}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterLeft, pointApex, pointOuterRight])}" fill="${cornerFill}" stroke="#000" stroke-width="${strokeWidth}"/>`;
     
   } else if (slot.type === 'half-corner') {
     const halfInnerAngle = 15;
@@ -704,7 +704,7 @@ function pleaseCreateOneShapeOutlineSVGForMe(slot, centerX, centerY, centerAngle
     const pointApex = polarToCartesianButWithFunnyName(centerX, centerY, radiusApex, centerAngle);
     const pointOuterLeft = polarToCartesianButWithFunnyName(centerX, centerY, radiusOuter, centerAngle + halfInnerAngle);
     
-    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterRight, pointApex, pointOuterLeft])}" fill="${cornerFill}" stroke="#333" stroke-width="${strokeWidth}"/>`;
+    svgMarkup += `<polygon points="${pointArrayToSVGStringPlease([pointInner, pointOuterRight, pointApex, pointOuterLeft])}" fill="${cornerFill}" stroke="#000" stroke-width="${strokeWidth}"/>`;
   }
   
   return svgMarkup;
@@ -849,7 +849,7 @@ function visualizeCubeShapeOutlinesPlease(input, size = 200, edgeFill = 'transpa
  */
 function visualizeFromHexCodePlease(hexCode, size = 200, colors = {}, ringDistance = 5) {
   const colorScheme = {
-    topColor: colors.topColor || '#000000',
+    topColor: colors.topColor || '#373737',
     bottomColor: colors.bottomColor || '#FFFFFF',
     frontColor: colors.frontColor || '#CC0000',
     rightColor: colors.rightColor || '#00AA00',
@@ -872,7 +872,7 @@ function visualizeFromHexCodePlease(hexCode, size = 200, colors = {}, ringDistan
  */
 function visualizeFromScrambleNotationPlease(scramble, size = 200, colors = {}, ringDistance = 5) {
   const colorScheme = {
-    topColor: colors.topColor || '#000000',
+    topColor: colors.topColor || '#373737',
     bottomColor: colors.bottomColor || '#FFFFFF',
     frontColor: colors.frontColor || '#CC0000',
     rightColor: colors.rightColor || '#00AA00',

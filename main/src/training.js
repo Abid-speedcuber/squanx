@@ -164,9 +164,9 @@ const DEFAULT_ALGSET = {
 
 const DEFAULT_TRAINING_ALGSETS = [
     { file: 'pll-plus-1.json', name: 'Lin- PLL+1', label: 'PLL+1', category: 'Lin', author: 'Amalogu' },
-    { file: 'SB.json', name: 'Lin- SB', label: 'SB', category: 'Lin', author: 'Amalogu', info: { text: 'extra information to be added' } },
+    { file: 'SB.json', name: 'Lin- SB', label: 'SB', category: 'Lin', author: 'Amalogu', /*info: { text: 'extra information to be added' }*/ },
     { file: 'linm2pll.json', name: 'Lin-M2+PLL', label: 'M2+PLL', category: 'Lin', author: 'Woofle' },
-    { file: 'EOCP.json', name: 'EOCP', label: 'EOCP', author: 'Abid' }
+    { file: 'EOCP.json', name: 'EOCP', label: 'EOCP', category: 'Other', author: 'Abid' }
 ];
 
 const DEFAULT_ALGSET_BASE_PATH = './default-algset/';
