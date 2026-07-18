@@ -129,6 +129,22 @@ const hexToPieceMapButBackwards = {
   'WO': 'e', 'WOB': 'ff', 'WB': 'c', 'WBR': 'dd'
 };
 
+const PLACEHOLDER_PIECE_COLORS = {
+  // Edge placeholders. Tune inner/outer independently.
+  E: { inner: '#888888', outer: '#888888' },
+  W: { inner: '#000000', outer: '#000000' },
+  Y: { inner: '#FFFFFF', outer: '#FFFFFF' },
+
+  // Corner placeholders. Tune each visible face independently.
+  C: { top: '#888888', left: '#888888', right: '#888888' },
+  X: { top: '#000000', left: '#000000', right: '#000000' },
+  Z: { top: '#FFFFFF', left: '#FFFFFF', right: '#FFFFFF' }
+};
+
+function isThisHexPieceACornerPlease(piece) {
+  return ['C', 'X', 'Z'].includes(piece) || ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(String(piece || '').toLowerCase());
+}
+
 // === BASIC HELPER FUNCTIONS ===
 function canYouRotateThisStringPlease(str, rotAmount) {
   const len = str.length;
@@ -433,6 +449,8 @@ function gimmeTheAngleForThisSlotPlease(slot, angleArray) {
 // === COLOR MAPPING ===
 function whatColorIsThisEdgePiecePlease(hexChar, colorScheme) {
   const { topColor, bottomColor, frontColor, rightColor, backColor, leftColor } = colorScheme;
+  if (PLACEHOLDER_PIECE_COLORS[hexChar]?.inner) return PLACEHOLDER_PIECE_COLORS[hexChar];
+  if (hexChar === 'R') return { inner: 'transparent', outer: 'transparent' };
   
   switch (hexChar.toLowerCase()) {
     case '0': return { inner: topColor, outer: backColor };
@@ -443,13 +461,12 @@ function whatColorIsThisEdgePiecePlease(hexChar, colorScheme) {
     case 'a': return { inner: bottomColor, outer: frontColor };
     case 'c': return { inner: bottomColor, outer: leftColor };
     case 'e': return { inner: bottomColor, outer: backColor };
-    case 'E': return { inner: '#888888', outer: '#888888' };
-    case 'R': return { inner: 'transparent', outer: 'transparent' };
     default: return { inner: '#4ecdc4', outer: '#4ecdc4' };
   }
 }
 
 function whatAreTheCornerColorLettersPlease(hexChar) {
+  if (PLACEHOLDER_PIECE_COLORS[hexChar]?.top) return PLACEHOLDER_PIECE_COLORS[hexChar];
   switch ((hexChar || '').toLowerCase()) {
     case '1': return { top: 'y', left: 'b', right: 'o' };
     case '3': return { top: 'y', left: 'r', right: 'b' };
@@ -459,13 +476,13 @@ function whatAreTheCornerColorLettersPlease(hexChar) {
     case 'b': return { top: 'w', left: 'r', right: 'g' };
     case 'd': return { top: 'w', left: 'b', right: 'r' };
     case 'f': return { top: 'w', left: 'o', right: 'b' };
-    case 'C': return { top: '#888888', left: '#888888', right: '#888888' };
     default: return { top: '#4ecdc4', left: '#4ecdc4', right: '#4ecdc4' };
   }
 }
 
 function convertColorLetterToHexCodePlease(colorLetter, colorScheme) {
   if (!colorLetter) return '#cccccc';
+  if (/^(#|rgb|hsl|var\()/i.test(String(colorLetter))) return colorLetter;
   const { topColor, bottomColor, frontColor, rightColor, backColor, leftColor } = colorScheme;
   
   switch (colorLetter.toLowerCase()) {
@@ -560,7 +577,7 @@ function pleaseGenerateTheFullSVGFromHexNotation(hexScrambleCode, equatorChar, d
   for (let i = 0; i < 12; i++) {
     if (scrambleIdx === 12) scrambleIdx++;
     const piece = hexScrambleCode[scrambleIdx];
-    const isCorner = ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(piece.toLowerCase());
+    const isCorner = isThisHexPieceACornerPlease(piece);
     shapeArray[i] = isCorner ? 1 : 0;
     scrambleIdx++;
   }
@@ -569,7 +586,7 @@ function pleaseGenerateTheFullSVGFromHexNotation(hexScrambleCode, equatorChar, d
   scrambleIdx = 13;
   for (let i = 12; i < 24; i++) {
     const piece = hexScrambleCode[scrambleIdx];
-    const isCorner = ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(piece.toLowerCase());
+    const isCorner = isThisHexPieceACornerPlease(piece);
     shapeArray[i] = isCorner ? 1 : 0;
     scrambleIdx++;
   }
@@ -602,9 +619,11 @@ function pleaseGenerateTheFullSVGFromHexNotation(hexScrambleCode, equatorChar, d
   htmlOutput += `<svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}">`;
   htmlOutput += `<circle cx="${centerX}" cy="${centerY}" r="${ringRadius}" fill="${colorScheme.circleColor}" stroke="rgba(0,0,0,0.08)" stroke-width="${strokeRing}"/>`;
   
-  const linePoint1Left = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 75);
-  const linePoint2Left = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 255);
-  htmlOutput += `<line x1="${linePoint1Left.x}" y1="${linePoint1Left.y}" x2="${linePoint2Left.x}" y2="${linePoint2Left.y}" stroke="${colorScheme.dividerColor}" stroke-width="${strokeLine}"/>`;
+  if (!colorScheme.hideDivider) {
+    const linePoint1Left = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 75);
+    const linePoint2Left = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 255);
+    htmlOutput += `<line x1="${linePoint1Left.x}" y1="${linePoint1Left.y}" x2="${linePoint2Left.x}" y2="${linePoint2Left.y}" stroke="${colorScheme.dividerColor}" stroke-width="${strokeLine}"/>`;
+  }
   htmlOutput += `<circle cx="${centerX}" cy="${centerY}" r="${unit10vh * 0.05}" fill="rgba(0,0,0,0.06)"/>`;
   
   const leftLayerAngles = Array.from({ length: 12 }, (_, j) => 90 + j * 30);
@@ -623,9 +642,11 @@ function pleaseGenerateTheFullSVGFromHexNotation(hexScrambleCode, equatorChar, d
   htmlOutput += `<svg width="${svgSize}" height="${svgSize}" viewBox="0 0 ${svgSize} ${svgSize}" style="margin-left: ${marginLeft}px;">`;
   htmlOutput += `<circle cx="${centerX}" cy="${centerY}" r="${ringRadius}" fill="${colorScheme.circleColor}" stroke="rgba(0,0,0,0.08)" stroke-width="${strokeRing}"/>`;
   
-  const linePoint1Right = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 105);
-  const linePoint2Right = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 285);
-  htmlOutput += `<line x1="${linePoint1Right.x}" y1="${linePoint1Right.y}" x2="${linePoint2Right.x}" y2="${linePoint2Right.y}" stroke="${colorScheme.dividerColor}" stroke-width="${strokeLine}"/>`;
+  if (!colorScheme.hideDivider) {
+    const linePoint1Right = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 105);
+    const linePoint2Right = polarToCartesianButWithFunnyName(centerX, centerY, ringRadius + 6, 285);
+    htmlOutput += `<line x1="${linePoint1Right.x}" y1="${linePoint1Right.y}" x2="${linePoint2Right.x}" y2="${linePoint2Right.y}" stroke="${colorScheme.dividerColor}" stroke-width="${strokeLine}"/>`;
+  }
   htmlOutput += `<circle cx="${centerX}" cy="${centerY}" r="${unit10vh * 0.05}" fill="rgba(0,0,0,0.06)"/>`;
   
   const rightLayerAngles = Array.from({ length: 12 }, (_, j) => 300 + j * 30);
@@ -701,7 +722,7 @@ function pleaseGenerateShapeVisualizationSVG(hexScrambleCode, size, edgeFill, co
   for (let i = 0; i < 12; i++) {
     if (scrambleIdx === 12) scrambleIdx++;
     const piece = hexScrambleCode[scrambleIdx];
-    const isCorner = ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(piece.toLowerCase());
+    const isCorner = isThisHexPieceACornerPlease(piece);
     shapeArray[i] = isCorner ? 1 : 0;
     scrambleIdx++;
   }
@@ -710,7 +731,7 @@ function pleaseGenerateShapeVisualizationSVG(hexScrambleCode, size, edgeFill, co
   scrambleIdx = 13;
   for (let i = 12; i < 24; i++) {
     const piece = hexScrambleCode[scrambleIdx];
-    const isCorner = ['1', '3', '5', '7', '9', 'b', 'd', 'f'].includes(piece.toLowerCase());
+    const isCorner = isThisHexPieceACornerPlease(piece);
     shapeArray[i] = isCorner ? 1 : 0;
     scrambleIdx++;
   }
@@ -835,7 +856,8 @@ function visualizeFromHexCodePlease(hexCode, size = 200, colors = {}, ringDistan
     backColor: colors.backColor || '#FF8C00',
     leftColor: colors.leftColor || '#0066CC',
     dividerColor: colors.dividerColor || '#7a0000',
-    circleColor: colors.circleColor || 'transparent'
+    circleColor: colors.circleColor || 'transparent',
+    hideDivider: Boolean(colors.hideDivider)
   };
   
   return pleaseGenerateTheFullSVGFromHexNotation(hexCode, hexCode[12], size, colorScheme, ringDistance);
@@ -857,7 +879,8 @@ function visualizeFromScrambleNotationPlease(scramble, size = 200, colors = {}, 
     backColor: colors.backColor || '#FF8C00',
     leftColor: colors.leftColor || '#0066CC',
     dividerColor: colors.dividerColor || '#7a0000',
-    circleColor: colors.circleColor || 'transparent'
+    circleColor: colors.circleColor || 'transparent',
+    hideDivider: Boolean(colors.hideDivider)
   };
   
   const cubeState = applyScrambleToCubePlease(scramble);

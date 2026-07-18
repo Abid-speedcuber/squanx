@@ -33,9 +33,13 @@ const AppState = {
     settings: {
         visualizationSize: 200,
         theme: 'dark', // 'light' or 'dark'
-        startingCueDuration: 0.2 // Duration in seconds (0.0 to 0.5)
+        startingCueDuration: 0.2, // Duration in seconds (0.0 to 0.5)
+        caseIconMode: 'both' // none, top, bottom, both
     }
 };
+
+let caseIconRenderer = null;
+let caseIconRendererPromise = null;
 
 const defaultTrainingJSONCache = {};
 
@@ -122,6 +126,21 @@ function isRecoverableSolverRandomizationError(error) {
 
 function cleanSolverErrorMessage(error) {
     return String(error?.message || error || 'Unknown solver error').replace(/^(solver error:\s*)+/i, '');
+}
+
+async function ensureCaseIconRenderer() {
+    if (caseIconRenderer) return caseIconRenderer;
+    if (!caseIconRendererPromise) {
+        caseIconRendererPromise = import('./draw-scramble.js').then((module) => {
+            caseIconRenderer = module.visualizeFromHexCodePlease || null;
+            return caseIconRenderer;
+        }).catch((error) => {
+            console.error('Could not load case icon renderer:', error);
+            caseIconRenderer = null;
+            return null;
+        });
+    }
+    return caseIconRendererPromise;
 }
 
 // Default algset structure
@@ -1536,6 +1555,15 @@ function openCaseSelectionModal() {
         <div class="modal-content case-selection-content">
             <div class="modal-header">
                 <h2>Select Cases - ${escapeHtml(getAlgsetDisplayLabel(AppState.activeTrainingJSON))}</h2>
+                <label class="case-icon-control">
+                    <span>Icon</span>
+                    <select class="settings-input case-icon-select" onchange="changeCaseIconMode(this.value)">
+                        <option value="none" ${AppState.settings.caseIconMode === 'none' ? 'selected' : ''}>None</option>
+                        <option value="top" ${AppState.settings.caseIconMode === 'top' ? 'selected' : ''}>Top</option>
+                        <option value="bottom" ${AppState.settings.caseIconMode === 'bottom' ? 'selected' : ''}>Bottom</option>
+                        <option value="both" ${AppState.settings.caseIconMode === 'both' ? 'selected' : ''}>Both</option>
+                    </select>
+                </label>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
             <div class="modal-body">
@@ -1545,6 +1573,7 @@ function openCaseSelectionModal() {
     `;
     document.body.appendChild(modal);
     renderCaseTree();
+    void ensureCaseIconRenderer().then(() => renderCaseTree());
     const resizeCaseModal = () => updateCaseSelectionModalHeight();
     window.addEventListener('resize', resizeCaseModal);
 
@@ -1629,6 +1658,32 @@ function isPathSelected(path) {
     return AppState.selectedCases.some(c => c._path === path);
 }
 
+function getCaseIconMode() {
+    const mode = AppState.settings.caseIconMode;
+    return ['none', 'top', 'bottom', 'both'].includes(mode) ? mode : 'both';
+}
+
+function getCaseIconHex(item) {
+    const top = String(item?.inputTop || '').trim();
+    const bottom = String(item?.inputBottom || '').trim();
+    if (top.length !== 12 || bottom.length !== 12) return '';
+    return `${top}|${bottom}`;
+}
+
+function renderCaseIcon(item) {
+    const mode = getCaseIconMode();
+    if (mode === 'none' || typeof caseIconRenderer !== 'function') return '';
+    const hex = getCaseIconHex(item);
+    if (!hex) return '';
+    try {
+        const icon = caseIconRenderer(hex, 68, { hideDivider: true }, -28);
+        return `<span class="case-icon case-icon-${mode}" aria-hidden="true">${icon}</span>`;
+    } catch (error) {
+        console.warn('Could not render case icon:', error);
+        return '';
+    }
+}
+
 function escapeAttribute(value) {
     return escapeHtml(value);
 }
@@ -1698,14 +1753,18 @@ function renderTreeNode(node, path, depth = 0, options = {}) {
 
         if (isCase) {
             const isSelected = isPathSelected(pathString);
+            const caseIcon = renderCaseIcon(value);
             html += `
                         <div class="tree-node tree-node-case" data-case-path="${escapeAttribute(pathString)}" style="--tree-depth:${depth};">
-                            <div class="tree-node-header">
-                                <input type="checkbox" class="tree-checkbox" 
-                                    ${isSelected ? 'checked' : ''} 
-                                    onchange='toggleCaseSelection(${pathArg}, this.checked)'
-                                >
-                                <span class="tree-label">${value.caseName || key}</span>
+                            <div class="tree-node-header tree-case-card">
+                                <div class="tree-case-title">
+                                    <input type="checkbox" class="tree-checkbox" 
+                                        ${isSelected ? 'checked' : ''} 
+                                        onchange='toggleCaseSelection(${pathArg}, this.checked)'
+                                    >
+                                    <span class="tree-label">${escapeHtml(value.caseName || key)}</span>
+                                </div>
+                                ${caseIcon ? `<div class="case-icon-row">${caseIcon}</div>` : ''}
                             </div>
                         </div>
                     `;
@@ -1831,6 +1890,16 @@ window.toggleFolderSelection = function (path, checked) {
     updateSelectedCaseCountDisplay();
     updateVisibleFolderCheckboxes();
     scheduleSelectionRefresh();
+};
+
+window.changeCaseIconMode = function(mode) {
+    AppState.settings.caseIconMode = ['none', 'top', 'bottom', 'both'].includes(mode) ? mode : 'both';
+    saveSettings();
+    if (AppState.settings.caseIconMode !== 'none' && !caseIconRenderer) {
+        void ensureCaseIconRenderer().then(() => renderCaseTree());
+        return;
+    }
+    renderCaseTree();
 };
 
 function openAlgsetInfoModal() {

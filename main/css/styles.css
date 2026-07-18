@@ -545,6 +545,22 @@ body.theme-light .squango-go {
     color: var(--text-strong);
 }
 
+.case-icon-control {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-soft);
+    font-size: 0.85rem;
+    font-weight: 800;
+}
+
+.case-icon-select {
+    width: auto;
+    min-width: 92px;
+    padding: 6px 9px;
+}
+
 .modal-body {
     padding: 20px;
     overflow-y: auto;
@@ -861,6 +877,26 @@ textarea.settings-input {
     background: var(--case-hover-bg);
 }
 
+.tree-case-card {
+    width: fit-content;
+    min-width: 110px;
+    max-width: 100%;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+    border: 1px solid var(--case-border);
+    background: var(--case-bg);
+    padding: 5px 7px;
+}
+
+.tree-case-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
 .tree-toggle {
     width: 14px;
     height: 1em;
@@ -889,6 +925,46 @@ textarea.settings-input {
     color: var(--text-main);
     position: relative;
     z-index: 1;
+}
+
+.case-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+    width: 124px;
+    height: 68px;
+    overflow: hidden;
+}
+
+.case-icon-top,
+.case-icon-bottom {
+    width: 68px;
+}
+
+.case-icon-row {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.case-icon > div {
+    display: flex !important;
+    align-items: center;
+}
+
+.case-icon svg {
+    display: block;
+    flex: 0 0 auto;
+    width: 68px;
+    height: 68px;
+}
+
+.case-icon-top svg:nth-of-type(2),
+.case-icon-bottom svg:nth-of-type(1) {
+    display: none;
 }
 
 .tree-label-folder {
