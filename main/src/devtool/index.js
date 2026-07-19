@@ -1,6 +1,6 @@
 import { ensureFeatureModules, ensureXlsxScript } from '../moduleLoader.js';
-import { AppState, DEFAULT_ALGSET, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveDevelopingRoot, saveLastScreen } from '../training.js';
-import { stringifyCompactAlgset } from '../algsetCodec.js';
+import { AppState, DEFAULT_ALGSET, USER_CONTROL_SECTIONS, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveDevelopingRoot, saveLastScreen } from '../training.js';
+import { extractAlgsetMetadata, stringifyCompactAlgset } from '../algsetCodec.js';
 import {
     DEFAULT_LAYER,
     DOWN_MOVE_OPTIONS,
@@ -53,6 +53,11 @@ import {
 const RUN_COUNT = 100;
 const SQUANX_WORDMARK = '<span class="squanx-brand"><span class="squango-sq">Squan</span><span class="squango-go">X</span></span>';
 const COMMAND_REFERENCE_URL = 'https://github.com/Abid-speedcuber/squanx/blob/ESmodule-build/docs/algset-script-command.md';
+const ROOT_USER_CONTROL_SECTIONS = [
+    ['middleLayer', 'Editable: Middle Layer'],
+    ['preAbf', 'Editable: Pre-ABF'],
+    ['postAbf', 'Editable: Post-ABF']
+];
 const SCRIPT_VALUE_PICKER_FIELDS = new Set(['top-layer', 'bottom-layer', 'parity', 'pre-abf', 'post-abf', 'rul', 'rdl', 'auf', 'adf']);
 const SCRIPT_PARITY_OPTIONS = [
     ['on', 'Overall No Parity'],
@@ -446,10 +451,23 @@ class JSONCreator {
                     <button class="json-creator-toolbar-btn" data-action="delete" title="Delete"><img src="viz/delete.svg" width="18" height="18" alt=""></button>
                     <button class="json-creator-toolbar-btn" data-action="open-extra-tools" title="Extra Tools"><img src="viz/extra-tools.svg" width="18" height="18" alt=""></button>
                 </div>
-                <button id="rootSelectorBtn" class="json-creator-root-btn" data-action="open-root-selector">Root: ${escapeHtml(this.state.activeRoot)} <span aria-hidden="true">▾</span></button>
+                ${this.renderRootSelectorControl()}
                 <div class="json-creator-tree" id="jsonCreatorTree">${this.renderTreeNode(this.state.tree, '', 0)}</div>
             </div>
         `;
+    }
+
+    renderRootSelectorControl() {
+        const inlineRenaming = this.state.renamingRoot === this.state.activeRoot && this.state.modal?.type !== 'root-selector';
+        if (inlineRenaming) {
+            return `
+                <div class="json-creator-root-btn root-btn-editing">
+                    <span class="root-btn-prefix">Root:</span>
+                    <input id="rootRenameInput" class="root-item-input root-btn-input" data-action="root-rename-input" value="${escapeHtml(this.state.renamingRootValue || this.state.activeRoot)}" spellcheck="false">
+                </div>
+            `;
+        }
+        return `<button id="rootSelectorBtn" class="json-creator-root-btn" data-action="open-root-selector">Root: ${escapeHtml(this.state.activeRoot)} <span aria-hidden="true">▾</span></button>`;
     }
 
     renderTreeNode(node, path, level) {
@@ -716,6 +734,7 @@ class JSONCreator {
         if (modal.type === 'file-import') return this.renderFileImportModal(modal);
         if (modal.type === 'bulk-import') return this.renderBulkImportModal();
         if (modal.type === 'data-management') return this.renderDataManagementModal();
+        if (modal.type === 'root-user-controls') return this.renderRootUserControlsModal(modal);
         if (modal.type === 'devtool-help') return this.renderDevtoolHelpModal();
         if (modal.type === 'algset-script') return this.renderAlgsetScriptModal(modal);
         return '';
@@ -849,6 +868,57 @@ class JSONCreator {
                         <button class="json-creator-btn json-creator-btn-secondary" data-action="reset-all-data">Reset All Data</button>
                     </div>
                 </div>
+            </div>
+        `;
+    }
+
+    renderRootUserControlsModal(modal) {
+        const metadata = this.getRootMetadata(modal.rootName);
+        return `
+            <div class="modal active confirmation-modal" data-action="modal-backdrop">
+                <div class="modal-content devtool-modal">
+                    <div class="modal-header"><h2>Root User Controls</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
+                    <div class="modal-body root-user-controls-body">
+                        ${ROOT_USER_CONTROL_SECTIONS.map(([key, label]) => `
+                            <div class="root-user-control-section">
+                                <label class="json-creator-grid-item root-user-control-item">
+                                    <input type="checkbox" data-action="root-user-control-checkbox" data-root-control="${key}" ${metadata.userControls[key]?.enabled ? 'checked' : ''}>
+                                    <span>${escapeHtml(label)}</span>
+                                </label>
+                                ${metadata.userControls[key]?.enabled ? this.renderRootAllowedOptions(key, metadata.userControls[key]) : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderRootAllowedOptions(controlKey, control) {
+        const config = USER_CONTROL_SECTIONS[controlKey];
+        if (!config) return '';
+        const allowed = new Set(control.allowed);
+        const grouped = config.options.reduce((groups, option) => {
+            const group = option.group || '';
+            if (!groups.has(group)) groups.set(group, []);
+            groups.get(group).push(option);
+            return groups;
+        }, new Map());
+        return `
+            <div class="root-allowed-options" style="--root-control-columns:${config.columns};">
+                ${[...grouped.entries()].map(([group, options]) => `
+                    <div class="root-allowed-group">
+                        ${group ? `<div class="root-allowed-group-label">${escapeHtml(group)}</div>` : ''}
+                        <div class="root-allowed-grid">
+                            ${options.map((option) => `
+                                <label class="root-allowed-option">
+                                    <input type="checkbox" data-action="root-user-control-allowed" data-root-control="${controlKey}" data-root-control-option="${escapeHtml(option.id)}" ${allowed.has(option.id) ? 'checked' : ''}>
+                                    <span>${escapeHtml(option.label)}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')}
             </div>
         `;
     }
@@ -1305,6 +1375,12 @@ class JSONCreator {
             this.openContextMenu(event.clientX, event.clientY, 'root-item', '', { rootName: rootRow.dataset.root, keepModal: true });
             return;
         }
+        const rootButton = event.target.closest('#rootSelectorBtn');
+        if (rootButton) {
+            event.preventDefault();
+            this.openContextMenu(event.clientX, event.clientY, 'root-button', '', { rootName: this.state.activeRoot });
+            return;
+        }
         if (event.target.id === 'jsonCreatorTree') {
             event.preventDefault();
             this.openContextMenu(event.clientX, event.clientY, 'root', '');
@@ -1346,6 +1422,8 @@ class JSONCreator {
         const target = event.target;
         if (target.matches('input[type="file"]')) this.updateFileName(target);
         if (target.dataset.action === 'parity-mode') return this.updateParityMode(target.dataset.prefix, target.value);
+        if (target.dataset.action === 'root-user-control-checkbox') return this.updateRootUserControl(target.dataset.rootControl, target.checked);
+        if (target.dataset.action === 'root-user-control-allowed') return this.updateRootAllowedOption(target.dataset.rootControl, target.dataset.rootControlOption, target.checked);
         if (target.matches('input[type="checkbox"][data-field]')) {
             const value = target.dataset.valueType === 'number' ? Number(target.dataset.value) : target.dataset.value;
             return this.updateArrayField(target.dataset.prefix, target.dataset.field, value, target.checked);
@@ -1804,6 +1882,98 @@ class JSONCreator {
         selector.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - margin)}px`;
     }
 
+    getRootMetadata(rootName = this.state.activeRoot) {
+        const source = AppState.developingJSONMetadata?.[rootName] || {};
+        const controls = source.userControls && typeof source.userControls === 'object' ? source.userControls : {};
+        return {
+            userControls: {
+                middleLayer: this.normalizeRootUserControl('middleLayer', controls.middleLayer),
+                preAbf: this.normalizeRootUserControl('preAbf', controls.preAbf),
+                postAbf: this.normalizeRootUserControl('postAbf', controls.postAbf)
+            }
+        };
+    }
+
+    getRootMetadataFromImport(data) {
+        const metadata = extractAlgsetMetadata(data);
+        const controls = metadata.userControls && typeof metadata.userControls === 'object' ? metadata.userControls : {};
+        return {
+            userControls: {
+                middleLayer: this.normalizeRootUserControl('middleLayer', controls.middleLayer),
+                preAbf: this.normalizeRootUserControl('preAbf', controls.preAbf),
+                postAbf: this.normalizeRootUserControl('postAbf', controls.postAbf)
+            }
+        };
+    }
+
+    normalizeRootUserControl(section, value = {}) {
+        const optionIds = section ? this.getRootControlOptionIds(section) : [];
+        const source = value && typeof value === 'object' ? value : {};
+        const selectedSource = Array.isArray(source.selected) ? source.selected : this.getLegacyRootOverrideIds(section, source.override);
+        const allowed = Array.isArray(source.allowed) ? this.normalizeRootControlIds(section, source.allowed) : optionIds;
+        return {
+            enabled: Boolean(source.enabled),
+            allowed,
+            selected: this.normalizeRootControlIds(section, selectedSource)
+        };
+    }
+
+    getRootControlOptionIds(section) {
+        return (USER_CONTROL_SECTIONS[section]?.options || []).map((option) => option.id);
+    }
+
+    normalizeRootControlIds(section, values) {
+        const valid = new Set(this.getRootControlOptionIds(section));
+        if (!Array.isArray(values)) return [];
+        return [...new Set(values.map(String).filter((value) => valid.has(value)))];
+    }
+
+    getLegacyRootOverrideIds(section, override) {
+        if (!section || override === undefined || override === null || override === 'default') return [];
+        const values = Array.isArray(override) ? override : [override];
+        const valueSet = new Set(values.map(String));
+        return (USER_CONTROL_SECTIONS[section]?.options || [])
+            .filter((option) => valueSet.has(String(option.value)))
+            .map((option) => option.id);
+    }
+
+    setRootMetadata(rootName, metadata) {
+        if (!rootName) return;
+        AppState.developingJSONMetadata = AppState.developingJSONMetadata || {};
+        AppState.developingJSONMetadata[rootName] = metadata;
+        saveDevelopingJSONs();
+    }
+
+    openRootUserControls(rootName = this.state.activeRoot) {
+        if (!rootName || !AppState.developingJSONs[rootName]) return;
+        this.update({ modal: { type: 'root-user-controls', rootName }, contextMenu: null });
+    }
+
+    updateRootUserControl(controlKey, enabled) {
+        const rootName = this.state.modal?.rootName || this.state.activeRoot;
+        const metadata = this.getRootMetadata(rootName);
+        if (!metadata.userControls[controlKey]) return;
+        metadata.userControls[controlKey].enabled = enabled;
+        if (!enabled) metadata.userControls[controlKey].selected = [];
+        this.setRootMetadata(rootName, metadata);
+        this.render();
+    }
+
+    updateRootAllowedOption(controlKey, optionId, allowed) {
+        const rootName = this.state.modal?.rootName || this.state.activeRoot;
+        const metadata = this.getRootMetadata(rootName);
+        const control = metadata.userControls[controlKey];
+        if (!control) return;
+        const allowedSet = new Set(control.allowed);
+        if (allowed) allowedSet.add(optionId);
+        else allowedSet.delete(optionId);
+        control.allowed = this.normalizeRootControlIds(controlKey, [...allowedSet]);
+        const clippedAllowed = new Set(control.allowed);
+        control.selected = this.normalizeRootControlIds(controlKey, control.selected.filter((id) => clippedAllowed.has(id)));
+        this.setRootMetadata(rootName, metadata);
+        this.render();
+    }
+
     openExtraTools(event) {
         this.openContextMenu(event.clientX, event.clientY, 'extra', '');
     }
@@ -1826,6 +1996,17 @@ class JSONCreator {
                 { label: 'Reset', action: 'reset-root-item' },
                 { separator: true },
                 { label: 'Delete', action: 'delete-root' }
+            ];
+        }
+        if (menu.type === 'root-button') {
+            return [
+                { label: 'Rename', action: 'rename-active-root-inline' },
+                { label: 'Export as Json', action: 'export-active-root-json' },
+                { label: 'Train', action: 'train-active-root' },
+                { label: 'Reset', action: 'reset-active-root' },
+                { label: 'Delete', action: 'delete-active-root' },
+                { separator: true },
+                { label: 'Establish root level user control', action: 'open-root-user-controls' }
             ];
         }
         if (menu.type === 'root') {
@@ -1881,9 +2062,16 @@ class JSONCreator {
             const rootName = menu.rootName;
             return this.startRootInlineRename(rootName);
         }
+        if (action === 'rename-active-root-inline') return this.startActiveRootInlineRename();
+        if (action === 'export-active-root-json') return this.exportRootJSON(this.state.activeRoot);
+        if (action === 'train-active-root') return this.trainRoot(this.state.activeRoot);
+        if (action === 'reset-active-root') return this.resetRoot();
+        if (action === 'delete-active-root') return this.deleteRoot(this.state.activeRoot);
         if (action === 'export-root-json') return this.exportRootJSON(menu.rootName);
+        if (action === 'train-root') return this.trainRoot(menu.rootName);
         if (action === 'reset-root-item') return this.resetRootName(menu.rootName);
         if (action === 'delete-root') return this.deleteRoot(menu.rootName);
+        if (action === 'open-root-user-controls') return this.openRootUserControls(menu.rootName);
         if (action === 'new-case') return this.newCase(menu.path);
         if (action === 'new-folder') return this.newFolder(menu.path);
         if (action === 'open-bulk-import') return this.update({ modal: { type: 'bulk-import', targetPath: menu.path }, contextMenu: null });
@@ -1957,6 +2145,7 @@ class JSONCreator {
         if (AppState.developingJSONs[rootName]) return showFloatingMessage('A root with this name already exists', 'error');
         this.persistRoot();
         AppState.developingJSONs[rootName] = {};
+        AppState.developingJSONMetadata[rootName] = this.getRootMetadata(rootName);
         saveDevelopingJSONs();
         this.clearRootRenameState();
         this.closeModal(false);
@@ -1971,6 +2160,7 @@ class JSONCreator {
         this.persistRoot();
         const rootName = getUniqueName(AppState.developingJSONs, 'New Root');
         AppState.developingJSONs[rootName] = {};
+        AppState.developingJSONMetadata[rootName] = this.getRootMetadata(rootName);
         saveDevelopingJSONs();
         this.state.modal = { type: 'root-selector' };
         this.state.contextMenu = null;
@@ -1986,6 +2176,17 @@ class JSONCreator {
         this.state.renamingRootValue = rootName;
         this.state.newRootRename = options.removeOnCancel ? rootName : '';
         this.state.modal = { type: 'root-selector' };
+        this.state.contextMenu = null;
+        this.render();
+    }
+
+    startActiveRootInlineRename() {
+        const rootName = this.state.activeRoot;
+        if (!rootName || !AppState.developingJSONs[rootName]) return;
+        this.state.renamingRoot = rootName;
+        this.state.renamingRootValue = rootName;
+        this.state.newRootRename = '';
+        this.state.modal = null;
         this.state.contextMenu = null;
         this.render();
     }
@@ -2027,6 +2228,7 @@ class JSONCreator {
     removeNewRootFromRename(rootName) {
         if (rootName && AppState.developingJSONs[rootName]) {
             delete AppState.developingJSONs[rootName];
+            delete AppState.developingJSONMetadata[rootName];
             clearTemplate(rootName);
             clearExpandedFolders(rootName);
         }
@@ -2069,6 +2271,8 @@ class JSONCreator {
             : loadExpandedFolders(oldName);
         AppState.developingJSONs[rootName] = AppState.developingJSONs[oldName] || {};
         delete AppState.developingJSONs[oldName];
+        AppState.developingJSONMetadata[rootName] = this.getRootMetadata(oldName);
+        delete AppState.developingJSONMetadata[oldName];
         saveExpandedFolders(rootName, Array.isArray(expandedFolders) ? expandedFolders : []);
         clearExpandedFolders(oldName);
         if (template) saveTemplate(rootName, template);
@@ -2095,8 +2299,25 @@ class JSONCreator {
         const root = AppState.developingJSONs[rootName];
         if (!root) return;
         if (rootName === this.state.activeRoot) this.persistRoot();
-        downloadTextJSON(rootName, stringifyCompactAlgset(rootName === this.state.activeRoot ? this.state.tree : root));
+        downloadTextJSON(rootName, stringifyCompactAlgset(rootName === this.state.activeRoot ? this.state.tree : root, this.getRootMetadata(rootName)));
         this.update({ contextMenu: null });
+    }
+
+    trainRoot(rootName) {
+        const root = AppState.developingJSONs[rootName];
+        if (!root) return;
+        if (rootName === this.state.activeRoot) this.persistRoot();
+        importTrainingJSONData(rootName, clone(rootName === this.state.activeRoot ? this.state.tree : root), {
+            activate: true,
+            selectAll: true,
+            metadata: this.getRootMetadata(rootName)
+        });
+        saveLastScreen('training');
+        this.abortController?.abort();
+        this.root?.remove();
+        this.root = null;
+        renderApp();
+        void generateNewScramble();
     }
 
     resetRootName(rootName) {
@@ -2121,6 +2342,7 @@ class JSONCreator {
     deleteRoot(rootName) {
         if (!rootName || !AppState.developingJSONs[rootName]) return;
         delete AppState.developingJSONs[rootName];
+        delete AppState.developingJSONMetadata[rootName];
         clearTemplate(rootName);
         clearExpandedFolders(rootName);
         if (!Object.keys(AppState.developingJSONs).length) {
@@ -2157,7 +2379,7 @@ class JSONCreator {
     }
 
     getExtractedJSONText() {
-        return stringifyCompactAlgset(this.state.tree);
+        return stringifyCompactAlgset(this.state.tree, this.getRootMetadata());
     }
 
     downloadRootJSON() {
@@ -2166,7 +2388,7 @@ class JSONCreator {
 
     trainExtractedJSON() {
         this.persistRoot();
-        importTrainingJSONData(this.state.activeRoot, clone(this.state.tree), { activate: true, selectAll: true });
+        importTrainingJSONData(this.state.activeRoot, clone(this.state.tree), { activate: true, selectAll: true, metadata: this.getRootMetadata() });
         saveLastScreen('training');
         this.abortController?.abort();
         this.root?.remove();
@@ -2664,11 +2886,12 @@ class JSONCreator {
         const file = this.root?.querySelector('#jsonImportFile')?.files?.[0];
         if (!file) return showFloatingMessage('Please select a JSON file', 'error');
         try {
-            const text = await readFileAsText(file);
-            const data = JSON.parse(text);
-            if (this.state.modal.scope === 'root') {
-                if (mode === 'override') this.state.tree = normalizeTree(data);
-                else deepMergeTree(this.state.tree, data);
+                const text = await readFileAsText(file);
+                const data = JSON.parse(text);
+                if (this.state.modal.scope === 'root') {
+                    this.setRootMetadata(this.state.activeRoot, this.getRootMetadataFromImport(data));
+                    if (mode === 'override') this.state.tree = normalizeTree(data);
+                    else deepMergeTree(this.state.tree, data);
                 this.persistRoot();
                 this.closeModal(false);
                 showFloatingMessage('Data imported to root successfully', 'success');
@@ -2767,6 +2990,7 @@ class JSONCreator {
     resetAllData() {
         this.openConfirm('Reset All Data', 'Are you sure you want to reset ALL data?', () => {
             AppState.developingJSONs = { default: normalizeTree(DEFAULT_ALGSET) };
+            AppState.developingJSONMetadata = { default: this.getRootMetadataFromImport({}) };
             AppState.activeDevelopingJSON = 'default';
             saveDevelopingJSONs();
             this.state.activeRoot = 'default';

@@ -999,6 +999,24 @@ body.theme-dark .modal-content.devtool-modal .algset-script-summary {
     color: var(--devtool-strong) !important;
 }
 
+.json-creator-fullscreen .root-btn-editing {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: default;
+}
+
+.json-creator-fullscreen .root-btn-prefix {
+    flex: 0 0 auto;
+    color: var(--devtool-strong);
+    font-weight: 700;
+}
+
+.json-creator-fullscreen .root-btn-input {
+    display: block;
+    flex: 1 1 auto;
+}
+
 .json-creator-fullscreen .json-creator-tree-item.selected {
     background: #12324abf !important;
     color: var(--devtool-strong) !important;
@@ -2608,4 +2626,49 @@ body.theme-dark .modal-content.devtool-modal {
 .json-creator-fullscreen .modal-content.devtool-modal .script-ghost,
 .modal-content.devtool-modal .script-ghost {
     color: var(--script-ghost) !important;
+}
+
+.root-user-controls-body {
+    display: grid;
+    gap: 14px;
+}
+
+.root-user-control-item {
+    justify-content: flex-start;
+}
+
+.root-user-control-section,
+.root-allowed-options,
+.root-allowed-group {
+    display: grid;
+    gap: 8px;
+}
+
+.root-allowed-options {
+    margin-left: 22px;
+}
+
+.root-allowed-group-label {
+    color: var(--devtool-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.root-allowed-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--root-control-columns, 4), minmax(0, 1fr));
+    gap: 6px;
+}
+
+.root-allowed-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 6px 8px;
+    border: 1px solid var(--devtool-border);
+    border-radius: 6px;
+    background: var(--devtool-field);
+    color: var(--devtool-text);
 }

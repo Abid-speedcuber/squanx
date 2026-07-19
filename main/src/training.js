@@ -1,5 +1,5 @@
 import { ensureFeatureModules, openDevtoolFullscreen } from './moduleLoader.js';
-import { expandCompactAlgset } from './algsetCodec.js';
+import { expandCompactAlgset, extractAlgsetMetadata } from './algsetCodec.js';
 import {
     loadLargeValues,
     readLocalJSON,
@@ -26,8 +26,10 @@ const AppState = {
     holdStart: 0,
     removeLastConsumedKey: '',
     trainingJSONs: {}, // Multiple training JSONs: { name: data }
+    trainingJSONMetadata: {}, // Root-level controls and import metadata by algset name.
     activeTrainingJSON: null, // Currently selected training JSON
     developingJSONs: {}, // Multiple developing JSONs for JSON creator
+    developingJSONMetadata: {}, // Metadata by devtool root name.
     activeDevelopingJSON: 'default', // Currently selected root in JSON creator
     sessionTimes: {}, // { algsetName: [{caseName: string, time: number}] }
     caseIconModesByAlgset: {},
@@ -172,6 +174,32 @@ const DEFAULT_TRAINING_ALGSETS = [
 
 const DEFAULT_ALGSET_BASE_PATH = './default-algset/';
 const DEVELOPING_ROOT_NAMES_KEY = 'sq1DevelopingRootNames';
+const USER_CONTROL_SECTIONS = Object.freeze({
+    middleLayer: {
+        label: 'Middle Layer',
+        columns: 2,
+        options: [
+            { id: 'middle:/', key: 'middleLayer', value: '/', label: 'flipped', valueType: 'string' },
+            { id: 'middle:|', key: 'middleLayer', value: '|', label: 'solved', valueType: 'string' }
+        ]
+    },
+    preAbf: {
+        label: 'Pre-ABF',
+        columns: 6,
+        options: [
+            ...[-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6].map((value) => ({ id: `RUL:${value}`, key: 'RUL', value, label: String(value), group: 'Pre AUF', valueType: 'number' })),
+            ...[-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6].map((value) => ({ id: `RDL:${value}`, key: 'RDL', value, label: String(value), group: 'Pre ADF', valueType: 'number' }))
+        ]
+    },
+    postAbf: {
+        label: 'Post-ABF',
+        columns: 4,
+        options: [
+            ...['U0', 'U', 'U2', "U'"].map((value) => ({ id: `AUF:${value}`, key: 'AUF', value, label: value, group: 'Post AUF', valueType: 'string' })),
+            ...['D0', 'D', 'D2', "D'"].map((value) => ({ id: `ADF:${value}`, key: 'ADF', value, label: value, group: 'Post ADF', valueType: 'string' }))
+        ]
+    }
+});
 
 function getDevelopingRootKey(name) {
     return `sq1DevelopingRoot:${name}`;
@@ -252,6 +280,85 @@ function cloneJSON(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
+function getSectionOptionIds(section) {
+    return (USER_CONTROL_SECTIONS[section]?.options || []).map((option) => option.id);
+}
+
+function normalizeUserControlIds(section, values) {
+    const valid = new Set(getSectionOptionIds(section));
+    if (!Array.isArray(values)) return [];
+    return [...new Set(values.map(String).filter((value) => valid.has(value)))];
+}
+
+function getLegacyOverrideIds(section, override) {
+    if (override === undefined || override === null || override === 'default') return [];
+    const values = Array.isArray(override) ? override : [override];
+    const valueSet = new Set(values.map(String));
+    return (USER_CONTROL_SECTIONS[section]?.options || [])
+        .filter((option) => valueSet.has(String(option.value)))
+        .map((option) => option.id);
+}
+
+function normalizeUserControlSection(section, value = {}) {
+    const source = value && typeof value === 'object' ? value : {};
+    const selectedSource = Array.isArray(source.selected) ? source.selected : getLegacyOverrideIds(section, source.override);
+    const allowed = Array.isArray(source.allowed) ? normalizeUserControlIds(section, source.allowed) : getSectionOptionIds(section);
+    return {
+        enabled: Boolean(source.enabled),
+        allowed,
+        selected: normalizeUserControlIds(section, selectedSource)
+    };
+}
+
+function normalizeAlgsetMetadata(value = {}) {
+    const source = value && typeof value === 'object' ? value : {};
+    const controls = source.userControls && typeof source.userControls === 'object' ? source.userControls : {};
+    return {
+        userControls: {
+            middleLayer: normalizeUserControlSection('middleLayer', controls.middleLayer),
+            preAbf: normalizeUserControlSection('preAbf', controls.preAbf),
+            postAbf: normalizeUserControlSection('postAbf', controls.postAbf)
+        }
+    };
+}
+
+function hasEnabledUserControls(metadata) {
+    const controls = normalizeAlgsetMetadata(metadata).userControls;
+    return Object.values(controls).some((control) => control.enabled);
+}
+
+function getTrainingAlgsetMetadata(name = AppState.activeTrainingJSON) {
+    return normalizeAlgsetMetadata(AppState.trainingJSONMetadata[name]);
+}
+
+function saveTrainingMetadata() {
+    saveLargeValue('sq1TrainingJSONMetadata', AppState.trainingJSONMetadata);
+}
+
+function getUserControlOptionConfig(section) {
+    return USER_CONTROL_SECTIONS[section] || null;
+}
+
+function applyUserControlOverrides(config) {
+    const controls = getTrainingAlgsetMetadata().userControls;
+    for (const [section, control] of Object.entries(controls)) {
+        if (!control.enabled || !control.selected.length) continue;
+        const optionConfig = getUserControlOptionConfig(section);
+        if (!optionConfig) continue;
+        const allowed = new Set(control.allowed);
+        const selected = new Set(control.selected.filter((id) => allowed.has(id)));
+        const valuesByKey = new Map();
+        for (const option of optionConfig.options) {
+            if (!selected.has(option.id)) continue;
+            const value = option.valueType === 'number' ? Number(option.value) : String(option.value);
+            if (!valuesByKey.has(option.key)) valuesByKey.set(option.key, []);
+            valuesByKey.get(option.key).push(value);
+        }
+        for (const [key, values] of valuesByKey.entries()) config[key] = values;
+    }
+    return config;
+}
+
 async function fetchDefaultAlgsetData(name) {
     const algset = getDefaultTrainingAlgset(name);
     if (!algset) return null;
@@ -264,6 +371,7 @@ async function ensureDefaultTrainingAlgset(name) {
     if (defaultTrainingJSONCache[name]) return defaultTrainingJSONCache[name];
     const data = await fetchDefaultAlgsetData(name);
     if (!data) return null;
+    AppState.trainingJSONMetadata[name] = normalizeAlgsetMetadata(extractAlgsetMetadata(data));
     defaultTrainingJSONCache[name] = expandCompactAlgset(data);
     return defaultTrainingJSONCache[name];
 }
@@ -273,7 +381,14 @@ function loadTrainingJSONs(persisted = {}) {
     const saved = persisted.sq1TrainingJSONs;
     if (saved && typeof saved === 'object') {
         AppState.trainingJSONs = saved;
+        AppState.trainingJSONMetadata = persisted.sq1TrainingJSONMetadata && typeof persisted.sq1TrainingJSONMetadata === 'object'
+            ? persisted.sq1TrainingJSONMetadata
+            : {};
         for (const [name, data] of Object.entries(AppState.trainingJSONs)) {
+            AppState.trainingJSONMetadata[name] = normalizeAlgsetMetadata({
+                ...extractAlgsetMetadata(data),
+                ...(AppState.trainingJSONMetadata[name] || {})
+            });
             AppState.trainingJSONs[name] = expandCompactAlgset(data);
         }
         removeDefaultAlgsetsFromImportedStorage();
@@ -290,6 +405,7 @@ function loadTrainingJSONs(persisted = {}) {
 // Save training JSONs off the UI thread.
 function saveTrainingJSONs() {
     saveLargeValue('sq1TrainingJSONs', AppState.trainingJSONs);
+    saveTrainingMetadata();
     if (AppState.activeTrainingJSON) {
         writeLocalString('sq1ActiveTrainingJSON', AppState.activeTrainingJSON);
     } else {
@@ -332,8 +448,9 @@ function activateTrainingJSON(name, options = {}) {
 }
 
 function importTrainingJSONData(name, data, options = {}) {
-    const { activate = true, selectAll = true } = options;
+    const { activate = true, selectAll = true, metadata = null } = options;
     const storageName = isDefaultTrainingAlgset(name) ? getUniqueImportedTrainingAlgsetName(`${name} copy`) : name;
+    AppState.trainingJSONMetadata[storageName] = normalizeAlgsetMetadata(metadata || extractAlgsetMetadata(data));
     AppState.trainingJSONs[storageName] = expandCompactAlgset(data);
     AppState.selectedCasesByAlgset[storageName] = selectAll ? buildSelectedCasesForAlgset(storageName) : [];
     if (activate || !AppState.activeTrainingJSON) activateTrainingJSON(storageName, { selectAllWhenMissing: selectAll });
@@ -348,12 +465,19 @@ async function loadDevelopingJSONs(persisted = {}) {
     if (rootNames?.length) {
         const rootValues = await loadLargeValues(rootNames.map(getDevelopingRootKey));
         AppState.developingJSONs = {};
+        AppState.developingJSONMetadata = persisted.sq1DevelopingJSONMetadata && typeof persisted.sq1DevelopingJSONMetadata === 'object'
+            ? persisted.sq1DevelopingJSONMetadata
+            : {};
         for (const rootName of rootNames) {
             const rootValue = rootValues[getDevelopingRootKey(rootName)];
             if (rootValue && typeof rootValue === 'object') AppState.developingJSONs[rootName] = rootValue;
+            AppState.developingJSONMetadata[rootName] = normalizeAlgsetMetadata(AppState.developingJSONMetadata[rootName]);
         }
     } else if (persisted.sq1DevelopingJSONs && typeof persisted.sq1DevelopingJSONs === 'object') {
         AppState.developingJSONs = persisted.sq1DevelopingJSONs;
+        AppState.developingJSONMetadata = persisted.sq1DevelopingJSONMetadata && typeof persisted.sq1DevelopingJSONMetadata === 'object'
+            ? persisted.sq1DevelopingJSONMetadata
+            : {};
         saveDevelopingJSONs();
     }
 
@@ -373,6 +497,7 @@ function saveDevelopingJSONs() {
     const rootNames = Object.keys(AppState.developingJSONs);
     const values = Object.fromEntries(rootNames.map((name) => [getDevelopingRootKey(name), AppState.developingJSONs[name]]));
     values[DEVELOPING_ROOT_NAMES_KEY] = rootNames;
+    values.sq1DevelopingJSONMetadata = AppState.developingJSONMetadata;
     saveLargeValues(values);
     writeLocalString('sq1ActiveDevelopingJSON', AppState.activeDevelopingJSON);
 }
@@ -382,7 +507,8 @@ function saveDevelopingRoot(rootName = AppState.activeDevelopingJSON, tree = App
     AppState.developingJSONs[rootName] = tree;
     saveLargeValues({
         [getDevelopingRootKey(rootName)]: tree,
-        [DEVELOPING_ROOT_NAMES_KEY]: Object.keys(AppState.developingJSONs)
+        [DEVELOPING_ROOT_NAMES_KEY]: Object.keys(AppState.developingJSONs),
+        sq1DevelopingJSONMetadata: AppState.developingJSONMetadata
     });
     writeLocalString('sq1ActiveDevelopingJSON', AppState.activeDevelopingJSON);
 }
@@ -601,6 +727,12 @@ function renderApp() {
     const algsetInfoButton = hasAlgsetInfo(AppState.activeTrainingJSON)
         ? railButton('algset-info', 'rail-icon-info', 'Algset info')
         : '';
+    const hasUserControls = hasEnabledUserControls(getTrainingAlgsetMetadata(AppState.activeTrainingJSON));
+    const userControlButton = hasUserControls
+        ? `<button class="algset-settings-btn" id="algsetUserControlsBtn" aria-label="Algset controls" title="Algset controls">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#rail-icon-settings"/></svg>
+        </button>`
+        : '';
     const scrambleAction = !hasActiveAlgset ? 'select-algset' : !hasSelectedCases ? 'select-cases' : '';
     const scrambleActionClass = scrambleAction ? ' scramble-action' : '';
 
@@ -611,10 +743,13 @@ function renderApp() {
                 <div class="nav-left">
                     <span class="squango" id="squango-home"><span class="squango-sq">Squan</span><span class="squango-go">Go</span></span>
                 </div>
-                <button class="nav-center algset-select-btn" id="selectAlgsetBtn" aria-haspopup="dialog">
-                    <span>${activeAlgset}</span>
-                    <span class="algset-select-arrow" aria-hidden="true">▾</span>
-                </button>
+                <div class="nav-center-group">
+                    <button class="nav-center algset-select-btn" id="selectAlgsetBtn" aria-haspopup="dialog">
+                        <span>${activeAlgset}</span>
+                        <span class="algset-select-arrow" aria-hidden="true">▾</span>
+                    </button>
+                    ${userControlButton}
+                </div>
                 <div class="nav-spacer">
                     <span class="case-count" id="caseCount">${AppState.selectedCases.length} selected</span>
                 </div>
@@ -694,7 +829,7 @@ async function generateNewScramble() {
         const { generateHexState } = (await ensureFeatureModules()).hexState;
 
         // Config is already in correct format from JSON creator
-        const config = {
+        const config = applyUserControlOverrides({
             topLayer: randomCase.inputTop,
             bottomLayer: randomCase.inputBottom,
             middleLayer: randomCase.equator || ['/'],
@@ -704,7 +839,7 @@ async function generateNewScramble() {
             ADF: randomCase.adf || ['D0'],
             constraints: randomCase.constraints || {},
             parity: randomCase.parity || ['on']
-        };
+        });
 
         const result = generateHexState(config);
         
@@ -776,6 +911,7 @@ function setupEventListeners() {
     });
 
     document.getElementById('selectAlgsetBtn')?.addEventListener('click', openAlgsetSelectorModal);
+    document.getElementById('algsetUserControlsBtn')?.addEventListener('click', openAlgsetUserControlsModal);
     document.getElementById('scrambleDisplay')?.addEventListener('click', () => {
         const action = document.getElementById('scrambleDisplay')?.dataset.scrambleAction;
         if (action === 'select-algset') openAlgsetSelectorModal();
@@ -814,6 +950,84 @@ function setupEventListeners() {
         globalTimerListenersAttached = true;
     }
 }
+
+function renderUserControlOptions(section, control) {
+    const config = getUserControlOptionConfig(section);
+    if (!config || !control.enabled) return '';
+    const allowed = new Set(control.allowed);
+    const selected = new Set(control.selected);
+    const options = config.options.filter((option) => allowed.has(option.id));
+    const grouped = options.reduce((groups, option) => {
+        const group = option.group || '';
+        if (!groups.has(group)) groups.set(group, []);
+        groups.get(group).push(option);
+        return groups;
+    }, new Map());
+    return `
+        <div class="user-control-table" style="--user-control-columns:${config.columns};">
+            ${[...grouped.entries()].map(([group, groupOptions]) => `
+                <div class="user-control-group">
+                    ${group ? `<div class="user-control-group-label">${escapeHtml(group)}</div>` : ''}
+                    <div class="user-control-grid">
+                        ${groupOptions.map((option) => `
+                            <label class="user-control-option">
+                                <input type="checkbox" value="${escapeHtml(option.id)}" ${selected.has(option.id) ? 'checked' : ''} onchange='setAlgsetUserControlSelection(${JSON.stringify(section)}, ${JSON.stringify(option.id)}, this.checked)'>
+                                <span>${escapeHtml(option.label)}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function openAlgsetUserControlsModal() {
+    const metadata = getTrainingAlgsetMetadata();
+    if (!hasEnabledUserControls(metadata)) return;
+    const sections = Object.entries(metadata.userControls).filter(([, control]) => control.enabled);
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.innerHTML = `
+        <div class="modal-content algset-user-controls-modal">
+            <div class="modal-header">
+                <h2>Algset Controls</h2>
+                <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <p class="user-control-help">Select nothing in a group to keep that part default.</p>
+                ${sections.map(([section, control]) => {
+                    const config = getUserControlOptionConfig(section);
+                    return `
+                        <div class="settings-group user-control-section">
+                            <label class="settings-label">${escapeHtml(config.label)}</label>
+                            ${renderUserControlOptions(section, control)}
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) modal.remove();
+    });
+}
+
+window.setAlgsetUserControlSelection = function(section, optionId, checked) {
+    const metadata = getTrainingAlgsetMetadata();
+    const control = metadata.userControls[section];
+    if (!control?.enabled) return;
+    const allowed = new Set(control.allowed);
+    if (!allowed.has(optionId)) return;
+    const selected = new Set(control.selected);
+    if (checked) selected.add(optionId);
+    else selected.delete(optionId);
+    control.selected = normalizeUserControlIds(section, [...selected]);
+    AppState.trainingJSONMetadata[AppState.activeTrainingJSON] = metadata;
+    saveTrainingMetadata();
+    if (AppState.currentScramble) void generateNewScramble();
+};
 
 function handleRailAction(action) {
     switch (action) {
@@ -862,11 +1076,13 @@ function exportAllAppData() {
         version: 1,
         exportedAt: new Date().toISOString(),
         trainingJSONs: AppState.trainingJSONs,
+        trainingJSONMetadata: AppState.trainingJSONMetadata,
         activeTrainingJSON: AppState.activeTrainingJSON,
         selectedCasesByAlgset: AppState.selectedCasesByAlgset,
         selectedCases: AppState.selectedCases,
         caseTreeExpandedByAlgset: AppState.caseTreeExpandedByAlgset,
         developingJSONs: AppState.developingJSONs,
+        developingJSONMetadata: AppState.developingJSONMetadata,
         activeDevelopingJSON: AppState.activeDevelopingJSON,
         sessionTimes: AppState.sessionTimes,
         settings: AppState.settings
@@ -919,7 +1135,12 @@ window.importAllAppData = async function() {
     try {
         const data = JSON.parse(jsonText);
         AppState.trainingJSONs = data.trainingJSONs || {};
+        AppState.trainingJSONMetadata = data.trainingJSONMetadata || {};
         for (const [name, algsetData] of Object.entries(AppState.trainingJSONs)) {
+            AppState.trainingJSONMetadata[name] = normalizeAlgsetMetadata({
+                ...extractAlgsetMetadata(algsetData),
+                ...(AppState.trainingJSONMetadata[name] || {})
+            });
             AppState.trainingJSONs[name] = expandCompactAlgset(algsetData);
         }
         removeDefaultAlgsetsFromImportedStorage();
@@ -935,6 +1156,7 @@ window.importAllAppData = async function() {
         if (AppState.activeTrainingJSON) activateTrainingJSON(AppState.activeTrainingJSON, { selectAllWhenMissing: true });
         else AppState.selectedCases = [];
         AppState.developingJSONs = data.developingJSONs || { default: DEFAULT_ALGSET };
+        AppState.developingJSONMetadata = data.developingJSONMetadata || {};
         AppState.activeDevelopingJSON = data.activeDevelopingJSON && AppState.developingJSONs[data.activeDevelopingJSON]
             ? data.activeDevelopingJSON
             : Object.keys(AppState.developingJSONs)[0] || 'default';
@@ -1443,6 +1665,9 @@ async function openAlgsetInDevtool(name, type) {
 
     const rootName = getUniqueRootName(name);
     AppState.developingJSONs[rootName] = cloneJSON(data);
+    AppState.developingJSONMetadata[rootName] = normalizeAlgsetMetadata(
+        type === 'default' ? AppState.trainingJSONMetadata[name] : getTrainingAlgsetMetadata(name)
+    );
     AppState.activeDevelopingJSON = rootName;
     saveDevelopingJSONs();
     document.querySelectorAll('.modal').forEach((modal) => modal.remove());
@@ -1463,6 +1688,7 @@ window.removeAlgset = function(name) {
         `Remove algset "${name}"?`,
         async () => {
             delete AppState.trainingJSONs[name];
+            delete AppState.trainingJSONMetadata[name];
             delete AppState.selectedCasesByAlgset[name];
             if (AppState.activeTrainingJSON === name) {
                 AppState.activeTrainingJSON = getFirstAvailableTrainingAlgsetName();
@@ -2168,6 +2394,7 @@ window.removeTrainingJSON = function (name) {
         `Remove training set "${name}"?`,
         async () => {
             delete AppState.trainingJSONs[name];
+            delete AppState.trainingJSONMetadata[name];
             delete AppState.selectedCasesByAlgset[name];
             if (AppState.activeTrainingJSON === name) {
                 AppState.activeTrainingJSON = getFirstAvailableTrainingAlgsetName();
@@ -2219,7 +2446,9 @@ Object.assign(window, {
 export {
     AppState,
     DEFAULT_ALGSET,
+    USER_CONTROL_SECTIONS,
     activateTrainingJSON,
+    applyUserControlOverrides,
     importTrainingJSONData,
     initApp,
     renderApp,
