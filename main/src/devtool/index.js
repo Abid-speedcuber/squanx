@@ -67,6 +67,11 @@ const SCRIPT_PARITY_OPTIONS = [
     ['tnbp', 'Black No Parity, White Parity'],
     ['tpbp', 'Both Color Parity']
 ];
+const SCRIPT_PARITY_GROUPS = [
+    { value: 'ignore', label: 'Ignore', options: [] },
+    { value: 'overall', label: 'Overall', options: SCRIPT_PARITY_OPTIONS.slice(0, 2) },
+    { value: 'color', label: 'Color parity', options: SCRIPT_PARITY_OPTIONS.slice(2) }
+];
 
 function normalizeScriptFieldAlias(field) {
     const key = String(field || '').toLowerCase();
@@ -1110,21 +1115,72 @@ class JSONCreator {
     renderScriptOptionsPicker(picker) {
         const values = new Set(parseScriptPickerList(picker.value));
         if (picker.field === 'parity') {
-            return `<div class="script-picker-grid script-picker-grid-wide">${SCRIPT_PARITY_OPTIONS.map(([value, label]) => this.renderScriptPickerCheckbox(value, values.has(value), label)).join('')}</div>`;
+            return this.renderScriptParityPicker(picker, values);
         }
         const config = this.getScriptOptionsPickerConfig(picker.field);
         return `
             <div class="script-picker-section">
                 <h3>${escapeHtml(config.label)}</h3>
-                <div class="script-picker-grid">${config.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value))).join('')}</div>
+                ${config.groups ? config.groups.map((group) => `
+                    <div class="script-picker-subsection">
+                        <div class="script-picker-subtitle">${escapeHtml(group.label)}</div>
+                        <div class="script-picker-grid">${group.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value))).join('')}</div>
+                    </div>
+                `).join('') : `<div class="script-picker-grid">${config.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value))).join('')}</div>`}
             </div>
         `;
+    }
+
+    renderScriptParityPicker(picker, values) {
+        const mode = picker.parityMode || this.getScriptParityMode(values);
+        const group = SCRIPT_PARITY_GROUPS.find((item) => item.value === mode) || SCRIPT_PARITY_GROUPS[0];
+        return `
+            <div class="script-picker-section">
+                <div class="script-parity-mode-grid">
+                    ${SCRIPT_PARITY_GROUPS.map((item) => `
+                        <label class="json-creator-grid-item script-picker-option script-parity-mode-option">
+                            <input type="radio" name="scriptParityMode" data-action="script-parity-mode" value="${escapeHtml(item.value)}" ${item.value === mode ? 'checked' : ''}>
+                            <span>${escapeHtml(item.label)}</span>
+                        </label>
+                    `).join('')}
+                </div>
+                ${group.options.length ? `
+                    <div class="script-picker-grid script-picker-grid-wide">
+                        ${group.options.map(([value, label]) => this.renderScriptPickerCheckbox(value, values.has(value), label)).join('')}
+                    </div>
+                ` : '<p class="script-picker-hint">Insert ignore to clear parity instead of storing it as a parity value.</p>'}
+            </div>
+        `;
+    }
+
+    getScriptParityMode(values) {
+        if (values.has('ignore')) return 'ignore';
+        if (values.has('on') || values.has('op')) return 'overall';
+        if ([...values].some((value) => SCRIPT_PARITY_OPTIONS.slice(2).some(([option]) => option === value))) return 'color';
+        return 'ignore';
     }
 
     getScriptOptionsPickerConfig(field) {
         if (field === 'auf') return { label: 'Post AUF', options: MOVE_OPTIONS };
         if (field === 'adf') return { label: 'Post ADF', options: DOWN_MOVE_OPTIONS };
-        if (field === 'post-abf') return { label: 'Post ABF values', options: MOVE_OPTIONS };
+        if (field === 'post-abf') {
+            return {
+                label: 'Post ABF values',
+                groups: [
+                    { label: 'Post AUF', options: MOVE_OPTIONS },
+                    { label: 'Post ADF', options: DOWN_MOVE_OPTIONS }
+                ]
+            };
+        }
+        if (field === 'pre-abf') {
+            return {
+                label: 'Pre ABF values',
+                groups: [
+                    { label: 'Pre AUF', options: NUMBER_OPTIONS },
+                    { label: 'Pre ADF', options: NUMBER_OPTIONS }
+                ]
+            };
+        }
         return {
             label: field === 'rdl' ? 'Pre ADF' : field === 'rul' ? 'Pre AUF' : 'Pre ABF values',
             options: NUMBER_OPTIONS
@@ -1315,6 +1371,9 @@ class JSONCreator {
         if (action === 'reset-case') return this.resetCase();
         if (action === 'run-root') return this.runJSON();
         if (action === 'extract-json') return this.extractJSON();
+        if (action === 'export-active-root-json') return this.exportRootJSON(this.state.activeRoot);
+        if (action === 'train-active-root') return this.trainRoot(this.state.activeRoot);
+        if (action === 'open-root-user-controls') return this.openRootUserControls();
         if (action === 'open-data-management') return this.update({ modal: { type: 'data-management' } });
         if (action === 'close') return this.close();
         if (action === 'modal-cancel') return this.closeModal(false);
@@ -1422,12 +1481,28 @@ class JSONCreator {
         const target = event.target;
         if (target.matches('input[type="file"]')) this.updateFileName(target);
         if (target.dataset.action === 'parity-mode') return this.updateParityMode(target.dataset.prefix, target.value);
+        if (target.dataset.action === 'script-parity-mode') return this.updateScriptParityMode(target.value);
         if (target.dataset.action === 'root-user-control-checkbox') return this.updateRootUserControl(target.dataset.rootControl, target.checked);
         if (target.dataset.action === 'root-user-control-allowed') return this.updateRootAllowedOption(target.dataset.rootControl, target.dataset.rootControlOption, target.checked);
         if (target.matches('input[type="checkbox"][data-field]')) {
             const value = target.dataset.valueType === 'number' ? Number(target.dataset.value) : target.dataset.value;
             return this.updateArrayField(target.dataset.prefix, target.dataset.field, value, target.checked);
         }
+    }
+
+    updateScriptParityMode(parityMode) {
+        const modal = this.state.modal;
+        const picker = modal?.scriptPicker;
+        if (modal?.type !== 'algset-script' || picker?.field !== 'parity') return;
+        this.update({
+            modal: {
+                ...modal,
+                scriptPicker: {
+                    ...picker,
+                    parityMode
+                }
+            }
+        });
     }
 
     updateFileName(input) {
@@ -1986,7 +2061,9 @@ class JSONCreator {
                 { label: 'Reset Root', action: 'reset-root' },
                 { label: 'Bulk Import', action: 'open-bulk-import' },
                 { separator: true },
-                { label: 'Help', action: 'open-devtool-help' }
+                { label: 'Train', action: 'train-active-root' },
+                { label: 'Export as JSON', action: 'export-active-root-json' },
+                { label: 'Edit Trainer-side User Control', action: 'open-root-user-controls' }
             ];
         }
         if (menu.type === 'root-item') {
@@ -2001,12 +2078,15 @@ class JSONCreator {
         if (menu.type === 'root-button') {
             return [
                 { label: 'Rename', action: 'rename-active-root-inline' },
-                { label: 'Export as Json', action: 'export-active-root-json' },
-                { label: 'Train', action: 'train-active-root' },
-                { label: 'Reset', action: 'reset-active-root' },
-                { label: 'Delete', action: 'delete-active-root' },
+                { label: 'Case Template', action: 'open-case-template' },
+                { label: 'Import Data to Root', action: 'import-root-data' },
+                { label: 'Bulk Import', action: 'open-bulk-import' },
                 { separator: true },
-                { label: 'Establish root level user control', action: 'open-root-user-controls' }
+                { label: 'Train', action: 'train-active-root' },
+                { label: 'Export as JSON', action: 'export-active-root-json' },
+                { label: 'Edit Trainer-side User Control', action: 'open-root-user-controls' },
+                { separator: true },
+                { label: 'Delete', action: 'delete-active-root' }
             ];
         }
         if (menu.type === 'root') {
@@ -2072,6 +2152,8 @@ class JSONCreator {
         if (action === 'reset-root-item') return this.resetRootName(menu.rootName);
         if (action === 'delete-root') return this.deleteRoot(menu.rootName);
         if (action === 'open-root-user-controls') return this.openRootUserControls(menu.rootName);
+        if (action === 'open-case-template') return this.openCaseTemplate();
+        if (action === 'import-root-data') return this.update({ modal: { type: 'file-import', scope: 'root', title: `Import Data to Root: ${this.state.activeRoot}` }, contextMenu: null });
         if (action === 'new-case') return this.newCase(menu.path);
         if (action === 'new-folder') return this.newFolder(menu.path);
         if (action === 'open-bulk-import') return this.update({ modal: { type: 'bulk-import', targetPath: menu.path }, contextMenu: null });
@@ -2484,7 +2566,8 @@ class JSONCreator {
         return {
             ...request,
             kind: layer ? 'layer' : 'options',
-            value
+            value,
+            parityMode: request.field === 'parity' ? this.getScriptParityMode(new Set(parsedValues)) : undefined
         };
     }
 
@@ -2516,10 +2599,16 @@ class JSONCreator {
     }
 
     getScriptOptionsPickerValue() {
+        const picker = this.state.modal?.scriptPicker;
+        if (picker?.field === 'parity') {
+            const mode = this.root?.querySelector('[data-action="script-parity-mode"]:checked')?.value || picker.parityMode || 'ignore';
+            if (mode === 'ignore') return 'ignore';
+        }
         const checked = [...this.root?.querySelectorAll('[data-script-picker-value]:checked') || []]
             .map((input) => input.dataset.scriptPickerValue)
             .filter((value) => value !== undefined);
-        return formatScriptPickerList(checked);
+        const uniqueValues = [...new Set(checked)];
+        return formatScriptPickerList(uniqueValues);
     }
 
     runAlgsetScript() {

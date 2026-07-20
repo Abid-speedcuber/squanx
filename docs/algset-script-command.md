@@ -93,7 +93,7 @@ Execute commands mutate matched cases.
 
 `pre-abf`, `preABF`, `preabf`: sets both `rul` and `rdl`
 
-`post-abf`, `postABF`, `postabf`: sets both `auf` and `adf`
+`post-abf`, `postABF`, `postabf`: sets `auf` from `U` values and `adf` from `D` values
 
 `pre-auf`, `preAUF`: `rul`
 
@@ -241,7 +241,7 @@ Objects, currently for constraints:
 
 Layer strings are 12-character Square-1 layer encodings. In the app, press `Tab` after `top-layer=` or `bottom-layer=` to open the visual layer picker.
 
-For `parity`, `pre-abf`, `post-abf`, `rul`, `rdl`, `auf`, and `adf`, press `Tab` after `field=` to open checkbox pickers.
+For `parity`, `pre-abf`, `post-abf`, `rul`, `rdl`, `auf`, and `adf`, press `Tab` after `field=` to open checkbox pickers. `pre-abf` shows Pre AUF and Pre ADF sections, `post-abf` shows Post AUF and Post ADF sections, and `parity=ignore` clears parity without saving `ignore` as a parity value.
 
 ## Typical Recipes
 

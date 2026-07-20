@@ -787,6 +787,20 @@ body.theme-dark .modal-content.devtool-modal .algset-script-summary {
     font-size: 14px;
 }
 
+.script-picker-subsection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.script-picker-subtitle {
+    color: var(--devtool-muted-text, #666666);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
 .script-picker-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
@@ -803,6 +817,22 @@ body.theme-dark .modal-content.devtool-modal .algset-script-summary {
     border: 1px solid var(--devtool-border, #d0d0d0);
     border-radius: 6px;
     background: var(--devtool-muted-panel, #f5f5f5);
+}
+
+.script-parity-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+}
+
+.script-parity-mode-option {
+    font-weight: 700;
+}
+
+.script-picker-hint {
+    margin: 0;
+    color: var(--devtool-muted-text, #666666);
+    font-size: 13px;
 }
 
 .modal-content.devtool-modal .close-btn {

@@ -1108,23 +1108,6 @@ textarea.settings-input {
     font-size: 0.9rem;
 }
 
-.user-control-table,
-.user-control-group {
-    display: grid;
-    gap: 8px;
-}
-
-.user-control-group + .user-control-group {
-    margin-top: 4px;
-}
-
-.user-control-group-label {
-    color: var(--text-muted);
-    font-size: 0.76rem;
-    font-weight: 800;
-    text-transform: uppercase;
-}
-
 .user-control-grid {
     display: grid;
     grid-template-columns: repeat(var(--user-control-columns, 4), minmax(0, 1fr));

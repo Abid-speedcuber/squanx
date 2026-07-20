@@ -166,14 +166,26 @@ const DEFAULT_ALGSET = {
 };
 
 const DEFAULT_TRAINING_ALGSETS = [
-    { file: 'pll-plus-1.json', name: 'Lin- PLL+1', label: 'PLL+1', category: 'Lin', author: 'Amalogu' },
-    { file: 'SB.json', name: 'Lin- SB', label: 'SB', category: 'Lin', author: 'Amalogu', /*info: { text: 'extra information to be added' }*/ },
-    { file: 'linm2pll.json', name: 'Lin-M2+PLL', label: 'M2+PLL', category: 'Lin', author: 'Woofle' },
-    { file: 'EOCP.json', name: 'EOCP', label: 'EOCP', category: 'Other', author: 'Abid' }
+    { id: 'lin-sb', file: 'SB.json', name: 'SB', label: 'Second Block', category: 'Lin', author: 'Amalogu', /*info: { text: 'extra information to be added' }*/ },
+    { id: 'lin-rsb', file: 'rsb.json', name: 'RSB', label: 'Ricci\'s Second Block', category: 'Lin', author: 'Amalogu'},
+    { id: 'lin-pll-plus-1', file: 'pll-plus-1.json', name: 'PLL+1', label: 'PLL+1', category: 'Lin', author: 'Amalogu'},
+    { id: 'lin-opll-plus-1', file: 'opll-1.json', name: 'OPLL+1', label: 'OPLL+1', category: 'Lin', author: 'Amalogu'},
+    { id: 'lin-m2-pll', file: 'linm2pll.json', name: 'M2+PLL', label: 'M2+PLL', category: 'Lin', author: 'Woofle'},
+    { id: 'eocp', file: 'EOCP.json', name: 'EOCP', label: 'EOCP', category: 'Other', author: 'Abid'}
 ];
 
 const DEFAULT_ALGSET_BASE_PATH = './default-algset/';
 const DEVELOPING_ROOT_NAMES_KEY = 'sq1DevelopingRootNames';
+const LEGACY_DEFAULT_ALGSET_IDS = Object.freeze({
+    'Lin- PLL+1': 'lin-pll-plus-1',
+    PLLPlus1: 'lin-pll-plus-1',
+    'PLL+1': 'lin-pll-plus-1',
+    'Lin- SB': 'lin-sb',
+    SB: 'lin-sb',
+    'Lin-M2+PLL': 'lin-m2-pll',
+    'M2+PLL': 'lin-m2-pll',
+    EOCP: 'eocp'
+});
 const USER_CONTROL_SECTIONS = Object.freeze({
     middleLayer: {
         label: 'Middle Layer',
@@ -205,20 +217,27 @@ function getDevelopingRootKey(name) {
     return `sq1DevelopingRoot:${name}`;
 }
 
+function getDefaultTrainingAlgset(identifier) {
+    const key = String(identifier || '');
+    const legacyId = LEGACY_DEFAULT_ALGSET_IDS[key] || key;
+    return DEFAULT_TRAINING_ALGSETS.find((item) => item.name === key || item.id === legacyId) || null;
+}
+
 function isDefaultTrainingAlgset(name) {
-    return DEFAULT_TRAINING_ALGSETS.some((item) => item.name === name);
+    return Boolean(getDefaultTrainingAlgset(name));
 }
 
 function getImportedTrainingAlgsetNames() {
     return Object.keys(AppState.trainingJSONs).filter((name) => !isDefaultTrainingAlgset(name));
 }
 
-function getDefaultTrainingAlgset(name) {
-    return DEFAULT_TRAINING_ALGSETS.find((item) => item.name === name) || null;
+function getTrainingMetadataKey(name = AppState.activeTrainingJSON) {
+    return getDefaultTrainingAlgset(name)?.id || name || '';
 }
 
 function getTrainingJSONData(name) {
-    return AppState.trainingJSONs[name] || defaultTrainingJSONCache[name] || null;
+    const defaultAlgset = getDefaultTrainingAlgset(name);
+    return AppState.trainingJSONs[name] || defaultTrainingJSONCache[name] || (defaultAlgset ? defaultTrainingJSONCache[defaultAlgset.name] : null) || null;
 }
 
 function getFirstAvailableTrainingAlgsetName() {
@@ -243,7 +262,11 @@ function getUniqueImportedTrainingAlgsetName(baseName) {
 
 function removeDefaultAlgsetsFromImportedStorage() {
     for (const name of Object.keys(AppState.trainingJSONs)) {
-        if (isDefaultTrainingAlgset(name)) delete AppState.trainingJSONs[name];
+        const metadata = AppState.trainingJSONMetadata[name] || {};
+        if (isDefaultTrainingAlgset(name) || getDefaultTrainingAlgset(metadata.defaultAlgsetId)) {
+            delete AppState.trainingJSONs[name];
+            delete AppState.trainingJSONMetadata[name];
+        }
     }
 }
 
@@ -313,13 +336,15 @@ function normalizeUserControlSection(section, value = {}) {
 function normalizeAlgsetMetadata(value = {}) {
     const source = value && typeof value === 'object' ? value : {};
     const controls = source.userControls && typeof source.userControls === 'object' ? source.userControls : {};
-    return {
+    const metadata = {
         userControls: {
             middleLayer: normalizeUserControlSection('middleLayer', controls.middleLayer),
             preAbf: normalizeUserControlSection('preAbf', controls.preAbf),
             postAbf: normalizeUserControlSection('postAbf', controls.postAbf)
         }
     };
+    if (source.defaultAlgsetId) metadata.defaultAlgsetId = String(source.defaultAlgsetId);
+    return metadata;
 }
 
 function hasEnabledUserControls(metadata) {
@@ -328,7 +353,8 @@ function hasEnabledUserControls(metadata) {
 }
 
 function getTrainingAlgsetMetadata(name = AppState.activeTrainingJSON) {
-    return normalizeAlgsetMetadata(AppState.trainingJSONMetadata[name]);
+    const key = getTrainingMetadataKey(name);
+    return normalizeAlgsetMetadata(AppState.trainingJSONMetadata[key] || AppState.trainingJSONMetadata[name]);
 }
 
 function saveTrainingMetadata() {
@@ -368,12 +394,18 @@ async function fetchDefaultAlgsetData(name) {
 }
 
 async function ensureDefaultTrainingAlgset(name) {
-    if (defaultTrainingJSONCache[name]) return defaultTrainingJSONCache[name];
-    const data = await fetchDefaultAlgsetData(name);
+    const algset = getDefaultTrainingAlgset(name);
+    if (!algset) return null;
+    if (defaultTrainingJSONCache[algset.name]) return defaultTrainingJSONCache[algset.name];
+    const data = await fetchDefaultAlgsetData(algset.name);
     if (!data) return null;
-    AppState.trainingJSONMetadata[name] = normalizeAlgsetMetadata(extractAlgsetMetadata(data));
-    defaultTrainingJSONCache[name] = expandCompactAlgset(data);
-    return defaultTrainingJSONCache[name];
+    AppState.trainingJSONMetadata[algset.id] = normalizeAlgsetMetadata({
+        ...extractAlgsetMetadata(data),
+        ...(AppState.trainingJSONMetadata[algset.id] || {}),
+        defaultAlgsetId: algset.id
+    });
+    defaultTrainingJSONCache[algset.name] = expandCompactAlgset(data);
+    return defaultTrainingJSONCache[algset.name];
 }
 
 // Load training JSONs from IndexedDB, with one-time localStorage migration.
@@ -385,17 +417,23 @@ function loadTrainingJSONs(persisted = {}) {
             ? persisted.sq1TrainingJSONMetadata
             : {};
         for (const [name, data] of Object.entries(AppState.trainingJSONs)) {
-            AppState.trainingJSONMetadata[name] = normalizeAlgsetMetadata({
+            const metadataKey = getTrainingMetadataKey(name);
+            AppState.trainingJSONMetadata[metadataKey] = normalizeAlgsetMetadata({
                 ...extractAlgsetMetadata(data),
+                ...(AppState.trainingJSONMetadata[metadataKey] || {}),
                 ...(AppState.trainingJSONMetadata[name] || {})
             });
+            if (metadataKey !== name) delete AppState.trainingJSONMetadata[name];
             AppState.trainingJSONs[name] = expandCompactAlgset(data);
         }
         removeDefaultAlgsetsFromImportedStorage();
     }
 
     const activeJSON = readLocalString('sq1ActiveTrainingJSON', '');
-    if (activeJSON && (AppState.trainingJSONs[activeJSON] || isDefaultTrainingAlgset(activeJSON))) {
+    const activeDefault = getDefaultTrainingAlgset(activeJSON);
+    if (activeDefault) {
+        AppState.activeTrainingJSON = activeDefault.name;
+    } else if (activeJSON && AppState.trainingJSONs[activeJSON]) {
         AppState.activeTrainingJSON = activeJSON;
     } else if (Object.keys(AppState.trainingJSONs).length > 0) {
         AppState.activeTrainingJSON = Object.keys(AppState.trainingJSONs)[0];
@@ -450,7 +488,7 @@ function activateTrainingJSON(name, options = {}) {
 function importTrainingJSONData(name, data, options = {}) {
     const { activate = true, selectAll = true, metadata = null } = options;
     const storageName = isDefaultTrainingAlgset(name) ? getUniqueImportedTrainingAlgsetName(`${name} copy`) : name;
-    AppState.trainingJSONMetadata[storageName] = normalizeAlgsetMetadata(metadata || extractAlgsetMetadata(data));
+    AppState.trainingJSONMetadata[getTrainingMetadataKey(storageName)] = normalizeAlgsetMetadata(metadata || extractAlgsetMetadata(data));
     AppState.trainingJSONs[storageName] = expandCompactAlgset(data);
     AppState.selectedCasesByAlgset[storageName] = selectAll ? buildSelectedCasesForAlgset(storageName) : [];
     if (activate || !AppState.activeTrainingJSON) activateTrainingJSON(storageName, { selectAllWhenMissing: selectAll });
@@ -963,20 +1001,28 @@ function renderUserControlOptions(section, control) {
         groups.get(group).push(option);
         return groups;
     }, new Map());
-    return `
-        <div class="user-control-table" style="--user-control-columns:${config.columns};">
-            ${[...grouped.entries()].map(([group, groupOptions]) => `
-                <div class="user-control-group">
-                    ${group ? `<div class="user-control-group-label">${escapeHtml(group)}</div>` : ''}
-                    <div class="user-control-grid">
-                        ${groupOptions.map((option) => `
-                            <label class="user-control-option">
-                                <input type="checkbox" value="${escapeHtml(option.id)}" ${selected.has(option.id) ? 'checked' : ''} onchange='setAlgsetUserControlSelection(${JSON.stringify(section)}, ${JSON.stringify(option.id)}, this.checked)'>
-                                <span>${escapeHtml(option.label)}</span>
-                            </label>
-                        `).join('')}
-                    </div>
+    if (grouped.size) {
+        return [...grouped.entries()].map(([group, groupOptions]) => `
+            <div class="user-control-section">
+                <label class="settings-label">${escapeHtml(group)}</label>
+                <div class="user-control-grid" style="--user-control-columns:${config.columns};">
+                    ${groupOptions.map((option) => `
+                        <label class="user-control-option">
+                            <input type="checkbox" value="${escapeHtml(option.id)}" ${selected.has(option.id) ? 'checked' : ''} onchange='setAlgsetUserControlSelection(${JSON.stringify(section)}, ${JSON.stringify(option.id)}, this.checked)'>
+                            <span>${escapeHtml(option.label)}</span>
+                        </label>
+                    `).join('')}
                 </div>
+            </div>
+        `).join('');
+    }
+    return `
+        <div class="user-control-grid" style="--user-control-columns:${config.columns};">
+            ${options.map((option) => `
+                <label class="user-control-option">
+                    <input type="checkbox" value="${escapeHtml(option.id)}" ${selected.has(option.id) ? 'checked' : ''} onchange='setAlgsetUserControlSelection(${JSON.stringify(section)}, ${JSON.stringify(option.id)}, this.checked)'>
+                    <span>${escapeHtml(option.label)}</span>
+                </label>
             `).join('')}
         </div>
     `;
@@ -998,9 +1044,10 @@ function openAlgsetUserControlsModal() {
                 <p class="user-control-help">Select nothing in a group to keep that part default.</p>
                 ${sections.map(([section, control]) => {
                     const config = getUserControlOptionConfig(section);
+                    const hasGroups = config.options.some((option) => option.group);
                     return `
                         <div class="settings-group user-control-section">
-                            <label class="settings-label">${escapeHtml(config.label)}</label>
+                            ${hasGroups ? '' : `<label class="settings-label">${escapeHtml(config.label)}</label>`}
                             ${renderUserControlOptions(section, control)}
                         </div>
                     `;
@@ -1024,7 +1071,7 @@ window.setAlgsetUserControlSelection = function(section, optionId, checked) {
     if (checked) selected.add(optionId);
     else selected.delete(optionId);
     control.selected = normalizeUserControlIds(section, [...selected]);
-    AppState.trainingJSONMetadata[AppState.activeTrainingJSON] = metadata;
+    AppState.trainingJSONMetadata[getTrainingMetadataKey(AppState.activeTrainingJSON)] = metadata;
     saveTrainingMetadata();
     if (AppState.currentScramble) void generateNewScramble();
 };
@@ -1137,16 +1184,20 @@ window.importAllAppData = async function() {
         AppState.trainingJSONs = data.trainingJSONs || {};
         AppState.trainingJSONMetadata = data.trainingJSONMetadata || {};
         for (const [name, algsetData] of Object.entries(AppState.trainingJSONs)) {
-            AppState.trainingJSONMetadata[name] = normalizeAlgsetMetadata({
+            const metadataKey = getTrainingMetadataKey(name);
+            AppState.trainingJSONMetadata[metadataKey] = normalizeAlgsetMetadata({
                 ...extractAlgsetMetadata(algsetData),
+                ...(AppState.trainingJSONMetadata[metadataKey] || {}),
                 ...(AppState.trainingJSONMetadata[name] || {})
             });
+            if (metadataKey !== name) delete AppState.trainingJSONMetadata[name];
             AppState.trainingJSONs[name] = expandCompactAlgset(algsetData);
         }
         removeDefaultAlgsetsFromImportedStorage();
-        AppState.activeTrainingJSON = data.activeTrainingJSON && (AppState.trainingJSONs[data.activeTrainingJSON] || isDefaultTrainingAlgset(data.activeTrainingJSON))
-            ? data.activeTrainingJSON
-            : getFirstAvailableTrainingAlgsetName();
+        AppState.activeTrainingJSON = getDefaultTrainingAlgset(data.activeTrainingJSON)?.name
+            || (data.activeTrainingJSON && AppState.trainingJSONs[data.activeTrainingJSON]
+                ? data.activeTrainingJSON
+                : getFirstAvailableTrainingAlgsetName());
         AppState.selectedCasesByAlgset = data.selectedCasesByAlgset || {};
         AppState.caseTreeExpandedByAlgset = data.caseTreeExpandedByAlgset || {};
         if (Array.isArray(data.selectedCases) && AppState.activeTrainingJSON && !AppState.selectedCasesByAlgset[AppState.activeTrainingJSON]) {
@@ -1666,7 +1717,7 @@ async function openAlgsetInDevtool(name, type) {
     const rootName = getUniqueRootName(name);
     AppState.developingJSONs[rootName] = cloneJSON(data);
     AppState.developingJSONMetadata[rootName] = normalizeAlgsetMetadata(
-        type === 'default' ? AppState.trainingJSONMetadata[name] : getTrainingAlgsetMetadata(name)
+        type === 'default' ? AppState.trainingJSONMetadata[getTrainingMetadataKey(name)] : getTrainingAlgsetMetadata(name)
     );
     AppState.activeDevelopingJSON = rootName;
     saveDevelopingJSONs();
@@ -1688,6 +1739,7 @@ window.removeAlgset = function(name) {
         `Remove algset "${name}"?`,
         async () => {
             delete AppState.trainingJSONs[name];
+            delete AppState.trainingJSONMetadata[getTrainingMetadataKey(name)];
             delete AppState.trainingJSONMetadata[name];
             delete AppState.selectedCasesByAlgset[name];
             if (AppState.activeTrainingJSON === name) {
@@ -2394,6 +2446,7 @@ window.removeTrainingJSON = function (name) {
         `Remove training set "${name}"?`,
         async () => {
             delete AppState.trainingJSONs[name];
+            delete AppState.trainingJSONMetadata[getTrainingMetadataKey(name)];
             delete AppState.trainingJSONMetadata[name];
             delete AppState.selectedCasesByAlgset[name];
             if (AppState.activeTrainingJSON === name) {
