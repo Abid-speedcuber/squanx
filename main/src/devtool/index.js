@@ -808,8 +808,8 @@ class JSONCreator {
                 <div class="modal-content extract-json-content">
                     <div class="modal-header"><h2>Extract JSON: ${escapeHtml(this.state.activeRoot)}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body extract-json-body">
-                        <textarea id="extractedJSON" readonly style="width:100%;height:55vh;font-family:monospace;">${escapeHtml(jsonText)}</textarea>
-                        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
+                        <textarea id="extractedJSON" class="extract-json-textarea" readonly>${escapeHtml(jsonText)}</textarea>
+                        <div class="extract-json-footer">
                             <button class="json-creator-btn json-creator-btn-secondary" data-action="copy-extracted-json">Copy</button>
                             <button class="json-creator-btn" data-action="train-extracted-json">Train</button>
                             <button class="json-creator-btn" data-action="download-root-json">Download</button>

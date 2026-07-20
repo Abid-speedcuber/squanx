@@ -1553,25 +1553,35 @@ body.theme-light .json-creator-fullscreen img {
 .extract-json-content {
     display: flex !important;
     flex-direction: column !important;
-    max-height: 80vh !important;
+    block-size: min(80vh, 680px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    overflow: hidden !important;
 }
 
 .extract-json-body {
-    flex: 1 !important;
-    overflow-y: auto !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
     padding-bottom: 0 !important;
 }
 
+.extract-json-textarea {
+    flex: 1 !important;
+    inline-size: 100% !important;
+    min-height: 0 !important;
+    resize: none !important;
+    overflow: auto !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+}
+
 .extract-json-footer {
-    position: sticky;
-    bottom: 0;
-    background: #ffffff;
-    border-top: 1px solid #d0d0d0;
-    padding: 12px 20px;
+    flex: 0 0 auto;
     display: flex;
     gap: 12px;
     justify-content: flex-end;
-    z-index: 10;
 }
 
 /* Remove touch highlight flash */
