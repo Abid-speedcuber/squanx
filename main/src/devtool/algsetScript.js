@@ -49,7 +49,7 @@ function scanSegments(text, callback) {
             if (char === quote && previous !== '\\') quote = '';
             continue;
         }
-        if (char === '"' || char === "'") {
+        if (char === '"' || (char === "'" && !/[a-z0-9]/i.test(previous || ''))) {
             quote = char;
             continue;
         }

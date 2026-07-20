@@ -175,13 +175,19 @@ const DEFAULT_TRAINING_ALGSETS = [
 ];
 
 const DEFAULT_ALGSET_BASE_PATH = './default-algset/';
+const DEFAULT_ALGSET_ASSET_VERSION = typeof globalThis.__SQ1_BUILD_ID__ === 'string' ? globalThis.__SQ1_BUILD_ID__ : 'dev';
 const DEVELOPING_ROOT_NAMES_KEY = 'sq1DevelopingRootNames';
 const LEGACY_DEFAULT_ALGSET_IDS = Object.freeze({
     'Lin- PLL+1': 'lin-pll-plus-1',
     PLLPlus1: 'lin-pll-plus-1',
     'PLL+1': 'lin-pll-plus-1',
+    'Lin- OPLL+1': 'lin-opll-plus-1',
+    OPLLPlus1: 'lin-opll-plus-1',
+    'OPLL+1': 'lin-opll-plus-1',
     'Lin- SB': 'lin-sb',
     SB: 'lin-sb',
+    'Lin- RSB': 'lin-rsb',
+    RSB: 'lin-rsb',
     'Lin-M2+PLL': 'lin-m2-pll',
     'M2+PLL': 'lin-m2-pll',
     EOCP: 'eocp'
@@ -237,7 +243,8 @@ function getTrainingMetadataKey(name = AppState.activeTrainingJSON) {
 
 function getTrainingJSONData(name) {
     const defaultAlgset = getDefaultTrainingAlgset(name);
-    return AppState.trainingJSONs[name] || defaultTrainingJSONCache[name] || (defaultAlgset ? defaultTrainingJSONCache[defaultAlgset.name] : null) || null;
+    if (defaultAlgset) return defaultTrainingJSONCache[defaultAlgset.name] || defaultTrainingJSONCache[defaultAlgset.id] || null;
+    return AppState.trainingJSONs[name] || null;
 }
 
 function getFirstAvailableTrainingAlgsetName() {
@@ -261,13 +268,20 @@ function getUniqueImportedTrainingAlgsetName(baseName) {
 }
 
 function removeDefaultAlgsetsFromImportedStorage() {
+    let removed = false;
     for (const name of Object.keys(AppState.trainingJSONs)) {
-        const metadata = AppState.trainingJSONMetadata[name] || {};
-        if (isDefaultTrainingAlgset(name) || getDefaultTrainingAlgset(metadata.defaultAlgsetId)) {
+        const metadataKey = getTrainingMetadataKey(name);
+        const metadata = AppState.trainingJSONMetadata[metadataKey] || AppState.trainingJSONMetadata[name] || {};
+        const defaultByName = getDefaultTrainingAlgset(name);
+        const defaultByMetadata = getDefaultTrainingAlgset(metadata.defaultAlgsetId);
+        if (defaultByName || defaultByMetadata) {
             delete AppState.trainingJSONs[name];
+            if (!defaultByName || metadataKey === name) delete AppState.trainingJSONMetadata[metadataKey];
             delete AppState.trainingJSONMetadata[name];
+            removed = true;
         }
     }
+    return removed;
 }
 
 function hasAlgsetInfo(name) {
@@ -347,6 +361,16 @@ function normalizeAlgsetMetadata(value = {}) {
     return metadata;
 }
 
+function mergeDefaultAlgsetMetadata(defaultMetadata, storedMetadata, defaultAlgsetId) {
+    const base = normalizeAlgsetMetadata(defaultMetadata);
+    const stored = normalizeAlgsetMetadata(storedMetadata);
+    for (const section of Object.keys(base.userControls)) {
+        base.userControls[section].selected = normalizeUserControlIds(section, stored.userControls[section]?.selected || []);
+    }
+    base.defaultAlgsetId = defaultAlgsetId;
+    return base;
+}
+
 function hasEnabledUserControls(metadata) {
     const controls = normalizeAlgsetMetadata(metadata).userControls;
     return Object.values(controls).some((control) => control.enabled);
@@ -388,7 +412,8 @@ function applyUserControlOverrides(config) {
 async function fetchDefaultAlgsetData(name) {
     const algset = getDefaultTrainingAlgset(name);
     if (!algset) return null;
-    const response = await fetch(`${DEFAULT_ALGSET_BASE_PATH}${algset.file}`);
+    const url = `${DEFAULT_ALGSET_BASE_PATH}${algset.file}?v=${encodeURIComponent(DEFAULT_ALGSET_ASSET_VERSION)}`;
+    const response = await fetch(url, { cache: 'no-cache' });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();
 }
@@ -399,11 +424,13 @@ async function ensureDefaultTrainingAlgset(name) {
     if (defaultTrainingJSONCache[algset.name]) return defaultTrainingJSONCache[algset.name];
     const data = await fetchDefaultAlgsetData(algset.name);
     if (!data) return null;
-    AppState.trainingJSONMetadata[algset.id] = normalizeAlgsetMetadata({
-        ...extractAlgsetMetadata(data),
-        ...(AppState.trainingJSONMetadata[algset.id] || {}),
-        defaultAlgsetId: algset.id
-    });
+    AppState.trainingJSONMetadata[algset.id] = mergeDefaultAlgsetMetadata(
+        extractAlgsetMetadata(data),
+        AppState.trainingJSONMetadata[algset.id] || AppState.trainingJSONMetadata[algset.name],
+        algset.id
+    );
+    delete AppState.trainingJSONs[algset.name];
+    delete AppState.trainingJSONMetadata[algset.name];
     defaultTrainingJSONCache[algset.name] = expandCompactAlgset(data);
     return defaultTrainingJSONCache[algset.name];
 }
@@ -426,7 +453,11 @@ function loadTrainingJSONs(persisted = {}) {
             if (metadataKey !== name) delete AppState.trainingJSONMetadata[name];
             AppState.trainingJSONs[name] = expandCompactAlgset(data);
         }
-        removeDefaultAlgsetsFromImportedStorage();
+        const removedDefaultCopies = removeDefaultAlgsetsFromImportedStorage();
+        if (removedDefaultCopies) {
+            saveLargeValue('sq1TrainingJSONs', AppState.trainingJSONs);
+            saveTrainingMetadata();
+        }
     }
 
     const activeJSON = readLocalString('sq1ActiveTrainingJSON', '');
@@ -476,7 +507,13 @@ function activateTrainingJSON(name, options = {}) {
     AppState.activeTrainingJSON = name;
     const savedSelection = AppState.selectedCasesByAlgset[name];
     if (Array.isArray(savedSelection)) {
-        AppState.selectedCases = savedSelection.filter((item) => getTrainingCaseByPath(tree, item._path));
+        AppState.selectedCases = savedSelection
+            .map((item) => {
+                const path = item?._path;
+                const current = getTrainingCaseByPath(tree, path);
+                return current ? { ...current, _path: path, _jsonName: name } : null;
+            })
+            .filter(Boolean);
     } else {
         AppState.selectedCases = selectAllWhenMissing ? buildSelectedCasesForAlgset(name) : [];
     }
@@ -942,39 +979,13 @@ async function generateNewScramble() {
 
 // Setup event listeners
 let globalTimerListenersAttached = false;
+let trainerClickListenerAttached = false;
 
 function setupEventListeners() {
-    document.getElementById('squango-home')?.addEventListener('click', () => {
-        window.location.href = 'https://squan-go.web.app/';
-    });
-
-    document.getElementById('selectAlgsetBtn')?.addEventListener('click', openAlgsetSelectorModal);
-    document.getElementById('algsetUserControlsBtn')?.addEventListener('click', openAlgsetUserControlsModal);
-    document.getElementById('scrambleDisplay')?.addEventListener('click', () => {
-        const action = document.getElementById('scrambleDisplay')?.dataset.scrambleAction;
-        if (action === 'select-algset') openAlgsetSelectorModal();
-        if (action === 'select-cases') openCaseSelectionModal();
-    });
-    document.getElementById('prevScrambleBtn')?.addEventListener('click', () => {
-        if (AppState.scrambleHistory.length > 0) {
-            AppState.currentScramble = AppState.scrambleHistory.pop();
-            AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
-            renderApp();
-            return;
-        }
-    });
-    document.getElementById('nextScrambleBtn')?.addEventListener('click', () => {
-        void generateNewScramble();
-    });
-    document.getElementById('unselprev')?.addEventListener('click', removeLastSolve);
-    document.getElementById('hintBtn')?.addEventListener('click', openHintModal);
-    document.getElementById('rail-toggle')?.addEventListener('click', () => {
-        document.getElementById('rail')?.classList.toggle('collapsed');
-    });
-
-    document.querySelectorAll('[data-action]').forEach(button => {
-        button.addEventListener('click', () => handleRailAction(button.dataset.action));
-    });
+    if (!trainerClickListenerAttached) {
+        document.getElementById('app')?.addEventListener('click', handleTrainerClick);
+        trainerClickListenerAttached = true;
+    }
 
     const timerZone = document.getElementById('timerZone');
     timerZone?.addEventListener('mousedown', handleTimerMouseDown);
@@ -987,6 +998,45 @@ function setupEventListeners() {
         document.addEventListener('keyup', handleKeyUp);
         globalTimerListenersAttached = true;
     }
+}
+
+function handleTrainerClick(event) {
+    const target = event.target;
+    const app = document.getElementById('app');
+    if (!app?.contains(target) || !target.closest('.trainer-shell')) return;
+    if (target.closest('.modal')) return;
+
+    if (target.closest('#squango-home')) {
+        window.location.href = 'https://squan-go.web.app/';
+        return;
+    }
+    if (target.closest('#selectAlgsetBtn')) return openAlgsetSelectorModal();
+    if (target.closest('#algsetUserControlsBtn')) return openAlgsetUserControlsModal();
+    if (target.closest('#scrambleDisplay')) {
+        const action = document.getElementById('scrambleDisplay')?.dataset.scrambleAction;
+        if (action === 'select-algset') return openAlgsetSelectorModal();
+        if (action === 'select-cases') return openCaseSelectionModal();
+        return;
+    }
+    if (target.closest('#prevScrambleBtn')) {
+        if (AppState.scrambleHistory.length > 0) {
+            AppState.currentScramble = AppState.scrambleHistory.pop();
+            AppState.previousScramble = AppState.scrambleHistory[AppState.scrambleHistory.length - 1] || null;
+            renderApp();
+        }
+        return;
+    }
+    if (target.closest('#nextScrambleBtn')) return void generateNewScramble();
+    if (target.closest('#unselprev')) return removeLastSolve();
+    if (target.closest('#hintBtn')) return openHintModal();
+    if (target.closest('#rail-toggle')) {
+        document.getElementById('rail')?.classList.toggle('collapsed');
+        return;
+    }
+
+    const actionElement = target.closest('[data-action]');
+    if (!actionElement?.closest('.rail, .mobilebar')) return;
+    handleRailAction(actionElement.dataset.action);
 }
 
 function renderUserControlOptions(section, control) {

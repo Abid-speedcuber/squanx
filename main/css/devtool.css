@@ -524,30 +524,103 @@
 
 .algset-script-modal {
     width: min(900px, calc(100vw - 32px));
+    height: min(78vh, 720px);
 }
 
 .algset-script-body {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    min-height: 0;
+    padding: 24px !important;
+}
+
+.algset-script-terminal {
+    background: #030812 !important;
+    color: #d9f7ff !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.algset-script-console {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--devtool-border, #183653);
+    border-radius: 6px;
+    background: #01050d;
+    padding: 10px 12px;
+    scrollbar-gutter: stable;
+}
+
+.algset-script-entry {
+    display: grid;
+    gap: 2px;
+    margin-bottom: 6px;
+}
+
+.algset-script-entry:last-child {
+    margin-bottom: 0;
+}
+
+.algset-script-entry-command,
+.algset-script-entry-output {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.algset-script-command-line {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
+}
+
+.algset-script-shell-prompt {
+    color: #cfe7ff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+    white-space: pre;
+}
+
+.algset-script-entry-command {
+    color: #f3f8ff;
+}
+
+.algset-script-entry-output {
+    color: #a8c7e8;
+    padding-left: 0;
+}
+
+.algset-script-entry-output.error {
+    color: #ffb4b4;
+}
+
+.algset-script-prompt-row {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
 }
 
 .algset-script-editor {
     position: relative;
-    min-height: 280px;
-    border: 1px solid var(--devtool-border-strong, #a7bdd4);
-    border-radius: 4px;
-    background: var(--devtool-field, #ffffff);
-    overflow: hidden;
+    min-height: 22px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
 }
 
 .algset-script-input,
 .algset-script-highlight {
     box-sizing: border-box;
     width: 100%;
-    min-height: 280px;
+    min-height: 22px;
     margin: 0;
-    padding: 10px 12px;
+    padding: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 13px;
     line-height: 1.45;
@@ -560,12 +633,13 @@
     position: relative;
     z-index: 2;
     display: block;
-    resize: vertical;
+    resize: none;
     border: 0 !important;
     background: transparent !important;
     color: transparent !important;
     caret-color: var(--devtool-text, #1f2937);
     outline: none;
+    overflow: hidden;
 }
 
 .algset-script-input::selection {
@@ -579,6 +653,10 @@
     pointer-events: none;
     overflow: hidden;
     color: var(--devtool-text, #1f2937);
+}
+
+.algset-script-terminal .algset-script-highlight {
+    color: #d9f7ff;
 }
 
 .script-keyword {

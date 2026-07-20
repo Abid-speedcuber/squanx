@@ -46,7 +46,6 @@ import { normalizeAlgorithmInput } from './parseAdapter.js';
 import {
     completeAlgsetScript,
     executeAlgsetScript,
-    formatScriptSummary,
     getAlgsetScriptSuggestions
 } from './algsetScript.js';
 
@@ -103,8 +102,12 @@ function getScriptValuePickerRequest(text, cursor) {
     const field = normalizeScriptFieldAlias(match[1]);
     if (!SCRIPT_VALUE_PICKER_FIELDS.has(field)) return null;
     const value = match[2] || '';
+    const fieldStart = match.index + match[0].indexOf(match[1]);
+    const verbMatch = before.slice(0, fieldStart).match(/\b(append|set|add|remove)\s+$/i);
     return {
         field,
+        fieldStart,
+        verb: verbMatch?.[1]?.toLowerCase() || 'set',
         value,
         valueStart: cursor - value.length,
         valueEnd: cursor
@@ -276,6 +279,7 @@ class JSONCreator {
         this.root = null;
         this.abortController = null;
         this.shapeRenderPromise = null;
+        this.scriptTerminals = new Map();
         this.state = {
             activeRoot: 'default',
             tree: {},
@@ -1047,26 +1051,37 @@ class JSONCreator {
         });
         const completion = getScriptCompletionSuffix(script, cursor, suggestions);
         const highlighted = highlightAlgsetScript(script, cursor, completion);
+        const entries = modal.entries || [];
+        const prompt = this.getAlgsetScriptPrompt(modal);
         return `
             <div class="modal active extract-json-modal" data-action="modal-backdrop">
                 <div class="modal-content devtool-modal algset-script-modal">
-                    <div class="modal-header"><h2>Run Script: ${escapeHtml(modal.scopeLabel || 'root')}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
-                    <div class="modal-body algset-script-body">
-                        <p class="algset-script-help"><a href="${COMMAND_REFERENCE_URL}" target="_blank" rel="noopener noreferrer">Command reference</a></p>
-                        <div class="algset-script-editor">
-                            <pre id="algsetScriptHighlight" class="algset-script-highlight" aria-hidden="true">${highlighted}</pre>
-                            <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="if case-name contains &quot;Jf/&quot; in here append top-layer=W11W55Y33W77.">${escapeHtml(script)}</textarea>
+                    <div class="modal-header"><h2>Script Terminal: ${escapeHtml(modal.scopeLabel || 'root')}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
+                    <div class="modal-body algset-script-body algset-script-terminal">
+                        <div id="algsetScriptScrollback" class="algset-script-console">
+                            ${entries.map((entry) => `
+                                <div class="algset-script-entry">
+                                    <div class="algset-script-command-line"><span class="algset-script-shell-prompt">${escapeHtml(prompt)}</span><pre class="algset-script-entry-command">${highlightAlgsetScript(entry.command, entry.command.length, '')}</pre></div>
+                                    <pre class="algset-script-entry-output ${entry.type === 'error' ? 'error' : ''}">${escapeHtml(entry.output)}</pre>
+                                </div>
+                            `).join('')}
+                            <div class="algset-script-prompt-row">
+                                <span class="algset-script-shell-prompt" aria-hidden="true">${escapeHtml(prompt)}</span>
+                                <div class="algset-script-editor">
+                                    <pre id="algsetScriptHighlight" class="algset-script-highlight" aria-hidden="true">${highlighted}</pre>
+                                    <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="type help for the command reference">${escapeHtml(script)}</textarea>
+                                </div>
+                            </div>
                         </div>
-                        <div class="algset-script-actions">
-                            <button class="json-creator-btn json-creator-btn-secondary" data-action="modal-cancel">Close</button>
-                            <button class="json-creator-btn" data-action="run-algset-script">Run</button>
-                        </div>
-                        ${modal.summary ? `<pre class="algset-script-summary">${escapeHtml(modal.summary)}</pre>` : ''}
                     </div>
                 </div>
                 ${modal.scriptPicker ? this.renderScriptValuePicker(modal.scriptPicker) : ''}
             </div>
         `;
+    }
+
+    getAlgsetScriptPrompt(modal = this.state.modal) {
+        return '-> ';
     }
 
     renderScriptValuePicker(picker) {
@@ -1124,7 +1139,7 @@ class JSONCreator {
                 ${config.groups ? config.groups.map((group) => `
                     <div class="script-picker-subsection">
                         <div class="script-picker-subtitle">${escapeHtml(group.label)}</div>
-                        <div class="script-picker-grid">${group.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value))).join('')}</div>
+                        <div class="script-picker-grid">${group.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value), group.outputField)).join('')}</div>
                     </div>
                 `).join('') : `<div class="script-picker-grid">${config.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value))).join('')}</div>`}
             </div>
@@ -1176,8 +1191,8 @@ class JSONCreator {
             return {
                 label: 'Pre ABF values',
                 groups: [
-                    { label: 'Pre AUF', options: NUMBER_OPTIONS },
-                    { label: 'Pre ADF', options: NUMBER_OPTIONS }
+                    { label: 'Pre AUF', outputField: 'pre-auf', options: NUMBER_OPTIONS },
+                    { label: 'Pre ADF', outputField: 'pre-adf', options: NUMBER_OPTIONS }
                 ]
             };
         }
@@ -1187,10 +1202,10 @@ class JSONCreator {
         };
     }
 
-    renderScriptPickerCheckbox(value, checked, label = value) {
+    renderScriptPickerCheckbox(value, checked, label = value, outputField = '') {
         return `
             <label class="json-creator-grid-item script-picker-option">
-                <input type="checkbox" data-script-picker-value="${escapeHtml(value)}" ${checked ? 'checked' : ''}>
+                <input type="checkbox" data-script-picker-value="${escapeHtml(value)}" ${outputField ? `data-script-picker-output-field="${escapeHtml(outputField)}"` : ''} ${checked ? 'checked' : ''}>
                 <span>${escapeHtml(label)}</span>
             </label>
         `;
@@ -1246,8 +1261,11 @@ class JSONCreator {
             this.updateScriptSuggestions();
         }
         if (scriptInput) {
+            this.resizeAlgsetScriptInput(scriptInput);
             scriptInput.addEventListener('scroll', () => this.syncScriptEditorScroll(scriptInput), { signal: this.abortController.signal });
         }
+        const scriptScrollback = this.root?.querySelector('#algsetScriptScrollback');
+        if (scriptScrollback && !options.skipScriptFocus) scriptScrollback.scrollTop = scriptScrollback.scrollHeight;
         const treeRename = this.root?.querySelector('#treeRenameInput');
         if (treeRename) {
             treeRename.focus();
@@ -1537,9 +1555,13 @@ class JSONCreator {
                 event.preventDefault();
                 if (this.openScriptValuePickerFromInput(event.target)) return;
                 this.completeAlgsetScriptInput();
-            } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                if (this.navigateAlgsetScriptHistory(event.target, event.key === 'ArrowUp' ? -1 : 1)) {
+                    event.preventDefault();
+                }
+            } else if (event.key === 'Enter' && !event.isComposing) {
                 event.preventDefault();
-                this.runAlgsetScript();
+                this.handleAlgsetScriptEnter(event.target);
             }
             return;
         }
@@ -2482,22 +2504,54 @@ class JSONCreator {
     openAlgsetScript(scopePath = '') {
         const scopeNode = scopePath ? getNode(this.state.tree, scopePath) : this.state.tree;
         const scopeLabel = scopePath && scopeNode ? getPathName(scopePath) : this.state.activeRoot;
+        const terminalKey = this.getAlgsetScriptTerminalKey(scopePath);
+        const terminal = this.getAlgsetScriptTerminal(terminalKey);
         this.update({
             modal: {
                 type: 'algset-script',
                 scopePath: isFolder(scopeNode) ? scopePath : '',
                 scopeLabel,
-                script: loadLastAlgsetScript(),
-                summary: ''
+                terminalKey,
+                script: terminal.draft,
+                cursor: terminal.draft.length,
+                entries: terminal.entries,
+                historyIndex: terminal.history.length,
+                historyDraft: terminal.draft
             },
             contextMenu: null
         });
+    }
+
+    getAlgsetScriptTerminalKey(scopePath = '') {
+        return `${this.state.activeRoot || 'root'}::${scopePath || ''}`;
+    }
+
+    getAlgsetScriptTerminal(key = this.getAlgsetScriptTerminalKey()) {
+        if (!this.scriptTerminals.has(key)) {
+            const lastCommand = loadLastAlgsetScript();
+            this.scriptTerminals.set(key, {
+                entries: [],
+                history: lastCommand ? [lastCommand] : [],
+                draft: '',
+                lastCommand
+            });
+        }
+        return this.scriptTerminals.get(key);
+    }
+
+    syncAlgsetScriptTerminal(modal = this.state.modal) {
+        if (modal?.type !== 'algset-script') return null;
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        terminal.entries = modal.entries || [];
+        terminal.draft = modal.script || '';
+        return terminal;
     }
 
     updateScriptSuggestions() {
         const input = this.root?.querySelector('#algsetScriptInput');
         const highlight = this.root?.querySelector('#algsetScriptHighlight');
         if (!input || !highlight) return;
+        this.resizeAlgsetScriptInput(input);
         const suggestions = getAlgsetScriptSuggestions({
             tree: this.state.tree,
             text: input.value,
@@ -2509,10 +2563,18 @@ class JSONCreator {
         this.syncScriptEditorScroll(input);
     }
 
+    resizeAlgsetScriptInput(input) {
+        const height = Math.min(180, Math.max(22, input.scrollHeight));
+        input.style.height = `${height}px`;
+        const highlight = this.root?.querySelector('#algsetScriptHighlight');
+        if (highlight) highlight.style.height = `${height}px`;
+    }
+
     updateScriptCursorFromInput(input) {
         if (this.state.modal?.type !== 'algset-script') return;
         this.state.modal.script = input.value;
         this.state.modal.cursor = input.selectionStart ?? input.value.length;
+        this.syncAlgsetScriptTerminal();
         this.updateScriptSuggestions();
     }
 
@@ -2585,8 +2647,13 @@ class JSONCreator {
         const value = picker.kind === 'layer'
             ? (this.root?.querySelector('#scriptLayerPickerInput')?.value || picker.value || DEFAULT_LAYER)
             : this.getScriptOptionsPickerValue();
-        const nextScript = `${script.slice(0, picker.valueStart)}${value}${script.slice(picker.valueEnd)}`;
-        const nextCursor = picker.valueStart + value.length;
+        const replacement = picker.field === 'pre-abf' && picker.kind !== 'layer'
+            ? this.getPreAbfScriptPickerReplacement(picker)
+            : null;
+        const replaceStart = replacement ? picker.fieldStart : picker.valueStart;
+        const insertValue = replacement || value;
+        const nextScript = `${script.slice(0, replaceStart)}${insertValue}${script.slice(picker.valueEnd)}`;
+        const nextCursor = replaceStart + insertValue.length;
         this.update({
             modal: {
                 ...modal,
@@ -2596,6 +2663,20 @@ class JSONCreator {
             },
             contextMenu: null
         });
+    }
+
+    getPreAbfScriptPickerReplacement(picker) {
+        const grouped = new Map();
+        for (const input of this.root?.querySelectorAll('[data-script-picker-value]:checked') || []) {
+            const field = input.dataset.scriptPickerOutputField;
+            if (!field) continue;
+            if (!grouped.has(field)) grouped.set(field, []);
+            grouped.get(field).push(input.dataset.scriptPickerValue);
+        }
+        const verb = picker.verb || 'set';
+        const preAuf = formatScriptPickerList([...(new Set(grouped.get('pre-auf') || []))]);
+        const preAdf = formatScriptPickerList([...(new Set(grouped.get('pre-adf') || []))]);
+        return `pre-auf=${preAuf} and ${verb} pre-adf=${preAdf}`;
     }
 
     getScriptOptionsPickerValue() {
@@ -2611,34 +2692,135 @@ class JSONCreator {
         return formatScriptPickerList(uniqueValues);
     }
 
+    formatTerminalScriptSummary(summary) {
+        const lines = [];
+        const counters = [
+            ['Matched cases', summary.matchedCases],
+            ['Changed cases', summary.changedCases],
+            ['Created cases', summary.createdCases],
+            ['Created folders', summary.createdFolders],
+            ['Deleted cases', summary.deletedCases],
+            ['Deleted folders', summary.deletedFolders],
+            ['Arranged directories', summary.arrangedDirectories],
+            ['Arranged items', summary.arrangedItems]
+        ];
+        for (const [label, value] of counters) {
+            if (value) lines.push(`${label}: ${value}`);
+        }
+        const fields = Object.entries(summary.fieldsChanged || {})
+            .filter(([, count]) => count)
+            .map(([field, count]) => `${field} ${count}`)
+            .join(', ');
+        if (fields) lines.push(`Fields changed: ${fields}`);
+        if (summary.warnings?.length) lines.push(`Warnings: ${summary.warnings.length}`, ...summary.warnings.map((warning) => `- ${warning}`));
+        if (summary.errors?.length) lines.push(`Errors: ${summary.errors.length}`, ...summary.errors.map((error) => `- ${error}`));
+        return lines.join('\n') || 'No changes.';
+    }
+
+    handleAlgsetScriptEnter(input) {
+        const value = input.value || '';
+        const cursor = input.selectionStart ?? value.length;
+        const beforeCursor = value.slice(0, cursor);
+        if (/\\[ \t]*$/.test(beforeCursor)) {
+            const nextBefore = beforeCursor.replace(/\\[ \t]*$/, '\n');
+            input.value = `${nextBefore}${value.slice(input.selectionEnd ?? cursor)}`;
+            input.selectionStart = input.selectionEnd = nextBefore.length;
+            this.updateScriptCursorFromInput(input);
+            return;
+        }
+        this.runAlgsetScript();
+    }
+
+    navigateAlgsetScriptHistory(input, direction) {
+        const modal = this.state.modal;
+        if (modal?.type !== 'algset-script') return false;
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        const history = terminal.history || [];
+        if (!history.length) return false;
+        const currentIndex = modal.historyIndex ?? history.length;
+        if (direction < 0 && currentIndex <= 0) return false;
+        if (direction > 0 && currentIndex >= history.length) return false;
+        if (currentIndex === history.length) terminal.historyDraft = input.value || '';
+        const nextIndex = currentIndex + direction;
+        const nextScript = nextIndex >= history.length ? (terminal.historyDraft || '') : history[nextIndex];
+        input.value = nextScript;
+        input.selectionStart = input.selectionEnd = nextScript.length;
+        this.state.modal.historyIndex = nextIndex;
+        this.state.modal.historyDraft = terminal.historyDraft || '';
+        this.state.modal.script = nextScript;
+        this.state.modal.cursor = nextScript.length;
+        this.syncAlgsetScriptTerminal();
+        this.updateScriptSuggestions();
+        return true;
+    }
+
+    getScriptHelpHint() {
+        return `Type 'help' for the algset script command reference.`;
+    }
+
+    appendAlgsetScriptEntry(command, output, type = 'info', nextScript = '') {
+        const modal = this.state.modal;
+        if (modal?.type !== 'algset-script') return;
+        const entries = [...(modal.entries || []), { command, output, type }].slice(-80);
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        terminal.entries = entries;
+        terminal.draft = nextScript;
+        this.update({
+            modal: {
+                ...modal,
+                entries,
+                script: nextScript,
+                cursor: nextScript.length,
+                historyIndex: terminal.history.length,
+                historyDraft: nextScript,
+                scriptPicker: null
+            },
+            contextMenu: null
+        });
+    }
+
     runAlgsetScript() {
         const modal = this.state.modal;
         if (modal?.type !== 'algset-script') return;
         const input = this.root?.querySelector('#algsetScriptInput');
-        const script = input?.value || modal.script || '';
+        const script = (input?.value || modal.script || '').trim();
+        if (!script) return;
+        if (/^help$/i.test(script)) {
+            window.open(COMMAND_REFERENCE_URL, '_blank', 'noopener,noreferrer');
+            this.appendAlgsetScriptEntry(script, 'Opening command reference...', 'info');
+            return;
+        }
         saveLastAlgsetScript(script);
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        terminal.history = [...terminal.history.filter((item) => item !== script), script].slice(-80);
         const result = executeAlgsetScript(script, {
             tree: this.state.tree,
             scopePath: modal.scopePath || '',
             selectedPath: this.state.selectedPath,
             template: this.state.caseTemplate
         });
-        const summary = formatScriptSummary(result.summary);
+        const summary = this.formatTerminalScriptSummary(result.summary);
         if (!result.ok) {
-            this.update({ modal: { ...modal, script, summary }, contextMenu: null });
+            const output = `${summary}\n\n${this.getScriptHelpHint()}`;
+            this.appendAlgsetScriptEntry(script, output, 'error');
             showFloatingMessage('Script did not run', 'error');
             return;
         }
         const deletedCount = result.summary.deletedCases + result.summary.deletedFolders;
         if (deletedCount > 5) {
             this.openConfirm('Run Script', `This script deletes ${deletedCount} items. Run it anyway?`, () => {
-                this.applyAlgsetScriptResult(result, { ...modal, script, summary });
+                this.applyAlgsetScriptResult(result, { ...modal, script: '', cursor: 0, entries: [...(modal.entries || []), { command: script, output: summary, type: 'info' }] });
             }, () => {
-                this.update({ modal: { ...modal, script, summary: `${summary}\n\nCancelled before applying deletes.` }, contextMenu: null });
+                this.appendAlgsetScriptEntry(script, `${summary}\n\nCancelled before applying deletes.`, 'info');
             });
             return;
         }
-        this.applyAlgsetScriptResult(result, { ...modal, script, summary });
+        this.applyAlgsetScriptResult(result, {
+            ...modal,
+            script: '',
+            cursor: 0,
+            entries: [...(modal.entries || []), { command: script, output: summary, type: 'info' }]
+        });
     }
 
     applyAlgsetScriptResult(result, modal) {
@@ -2654,7 +2836,20 @@ class JSONCreator {
         }
         this.persistRoot();
         showFloatingMessage('Script ran', 'success');
-        this.update({ modal: { ...modal, summary: modal.summary }, contextMenu: null });
+        const entries = (modal.entries || []).slice(-80);
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        terminal.entries = entries;
+        terminal.draft = modal.script || '';
+        this.update({
+            modal: {
+                ...modal,
+                entries,
+                scriptPicker: null,
+                historyIndex: terminal.history.length,
+                historyDraft: terminal.draft
+            },
+            contextMenu: null
+        });
     }
 
     openCaseTemplate() {

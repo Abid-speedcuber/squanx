@@ -241,7 +241,9 @@ Objects, currently for constraints:
 
 Layer strings are 12-character Square-1 layer encodings. In the app, press `Tab` after `top-layer=` or `bottom-layer=` to open the visual layer picker.
 
-For `parity`, `pre-abf`, `post-abf`, `rul`, `rdl`, `auf`, and `adf`, press `Tab` after `field=` to open checkbox pickers. `pre-abf` shows Pre AUF and Pre ADF sections, `post-abf` shows Post AUF and Post ADF sections, and `parity=ignore` clears parity without saving `ignore` as a parity value.
+In the app's script terminal, type a command after `>` and press `Enter` to run it. End a line with `\` before pressing `Enter` to continue writing on a new line. Type `help` to open this reference.
+
+For `parity`, `pre-abf`, `post-abf`, `rul`, `rdl`, `auf`, and `adf`, press `Tab` after `field=` to open checkbox pickers. The `pre-abf` picker shows Pre AUF and Pre ADF sections and inserts them as separate `pre-auf=[...]` and `pre-adf=[...]` commands, `post-abf` shows Post AUF and Post ADF sections, and `parity=ignore` clears parity without saving `ignore` as a parity value.
 
 ## Typical Recipes
 
