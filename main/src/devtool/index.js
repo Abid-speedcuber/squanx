@@ -1069,7 +1069,7 @@ class JSONCreator {
                                 <span class="algset-script-shell-prompt" aria-hidden="true">${escapeHtml(prompt)}</span>
                                 <div class="algset-script-editor">
                                     <pre id="algsetScriptHighlight" class="algset-script-highlight" aria-hidden="true">${highlighted}</pre>
-                                    <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="Insert command here (type \"help\" for the command reference)">${escapeHtml(script)}</textarea>
+                                    <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="Insert command here (type &quot;help&quot; for the command reference)">${escapeHtml(script)}</textarea>
                                 </div>
                             </div>
                         </div>
