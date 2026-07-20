@@ -1490,7 +1490,7 @@ class JSONCreator {
         }
         if (target.dataset.action === 'shape-code-input') {
             if (this.state.shapeValueEdit) {
-                this.state.shapeValueEdit.value = target.value.toUpperCase().slice(0, 12);
+                this.state.shapeValueEdit.value = target.value.slice(0, 12);
                 this.state.shapeValueEdit.invalid = false;
                 if (target.value !== this.state.shapeValueEdit.value) target.value = this.state.shapeValueEdit.value;
             }
@@ -3012,7 +3012,7 @@ class JSONCreator {
     commitShapeValueEdit() {
         const edit = this.state.shapeValueEdit;
         if (!edit) return true;
-        const value = String(edit.value || '').trim().toUpperCase();
+        const value = String(edit.value || '').trim();
         if (!this.isValidLayerValue(value)) {
             showFloatingMessage('Invalid state. Enter a valid 12-character shape value.', 'error');
             this.state.shapeValueEdit = { ...edit, value, invalid: true };
