@@ -222,11 +222,38 @@ body.theme-light .squango-go {
     text-overflow: ellipsis;
 }
 
+.nav-center-group {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 0;
+    max-width: min(58vw, 480px);
+}
+
 .algset-select-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
+}
+
+.algset-settings-btn {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid var(--divider-soft);
+    background: var(--field-bg);
+    color: var(--text-main);
+}
+
+.algset-settings-btn:hover {
+    background: var(--case-hover-bg);
+    border-color: var(--border-col);
 }
 
 .algset-select-btn span:first-child {
@@ -1064,6 +1091,51 @@ textarea.settings-input {
     gap: 8px;
     margin-top: 12px;
     padding-left: 20px;
+}
+
+.algset-user-controls-modal {
+    max-width: 560px;
+}
+
+.user-control-section {
+    display: grid;
+    gap: 8px;
+}
+
+.user-control-help {
+    margin: 0 0 16px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.user-control-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--user-control-columns, 4), minmax(0, 1fr));
+    gap: 8px;
+}
+
+.user-control-option {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    min-height: 36px;
+    padding: 8px 10px;
+    border: 1px solid var(--divider-soft);
+    border-radius: 8px;
+    background: var(--case-bg);
+    color: var(--text-main);
+    font-weight: 700;
+}
+
+.user-control-option input {
+    flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+    .user-control-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 .hint-body pre {

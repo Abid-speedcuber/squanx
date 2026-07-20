@@ -524,30 +524,112 @@
 
 .algset-script-modal {
     width: min(900px, calc(100vw - 32px));
+    height: min(78vh, 720px);
 }
 
 .algset-script-body {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    min-height: 0;
+    padding: 24px !important;
+}
+
+.algset-script-terminal {
+    background: #030812 !important;
+    color: #d9f7ff !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.algset-script-console {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--devtool-border, #183653);
+    border-radius: 6px;
+    background: #01050d;
+    padding: 10px 12px;
+    scrollbar-gutter: stable;
+    cursor: text;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.algset-script-entry {
+    display: grid;
+    gap: 2px;
+    margin-bottom: 6px;
+}
+
+.algset-script-entry:last-child {
+    margin-bottom: 0;
+}
+
+.algset-script-entry-command,
+.algset-script-entry-output {
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.algset-script-command-line {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
+}
+
+.algset-script-shell-prompt {
+    color: #cfe7ff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.45;
+    white-space: pre;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.algset-script-entry-command {
+    color: #f3f8ff;
+}
+
+.algset-script-entry-output {
+    color: #a8c7e8;
+    padding-left: 0;
+}
+
+.algset-script-entry-output.error {
+    color: #ffb4b4;
+}
+
+.algset-script-prompt-row {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: start;
 }
 
 .algset-script-editor {
     position: relative;
-    min-height: 280px;
-    border: 1px solid var(--devtool-border-strong, #a7bdd4);
-    border-radius: 4px;
-    background: var(--devtool-field, #ffffff);
-    overflow: hidden;
+    min-height: 22px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    overflow: visible;
 }
 
 .algset-script-input,
 .algset-script-highlight {
     box-sizing: border-box;
     width: 100%;
-    min-height: 280px;
+    min-height: 22px;
     margin: 0;
-    padding: 10px 12px;
+    padding: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 13px;
     line-height: 1.45;
@@ -560,12 +642,13 @@
     position: relative;
     z-index: 2;
     display: block;
-    resize: vertical;
+    resize: none;
     border: 0 !important;
     background: transparent !important;
     color: transparent !important;
     caret-color: var(--devtool-text, #1f2937);
     outline: none;
+    overflow: hidden;
 }
 
 .algset-script-input::selection {
@@ -579,6 +662,10 @@
     pointer-events: none;
     overflow: hidden;
     color: var(--devtool-text, #1f2937);
+}
+
+.algset-script-terminal .algset-script-highlight {
+    color: #d9f7ff;
 }
 
 .script-keyword {
@@ -787,6 +874,20 @@ body.theme-dark .modal-content.devtool-modal .algset-script-summary {
     font-size: 14px;
 }
 
+.script-picker-subsection {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.script-picker-subtitle {
+    color: var(--devtool-muted-text, #666666);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
 .script-picker-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
@@ -803,6 +904,22 @@ body.theme-dark .modal-content.devtool-modal .algset-script-summary {
     border: 1px solid var(--devtool-border, #d0d0d0);
     border-radius: 6px;
     background: var(--devtool-muted-panel, #f5f5f5);
+}
+
+.script-parity-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+}
+
+.script-parity-mode-option {
+    font-weight: 700;
+}
+
+.script-picker-hint {
+    margin: 0;
+    color: var(--devtool-muted-text, #666666);
+    font-size: 13px;
 }
 
 .modal-content.devtool-modal .close-btn {
@@ -997,6 +1114,24 @@ body.theme-dark .modal-content.devtool-modal .algset-script-summary {
     background: var(--devtool-hover) !important;
     border-color: var(--devtool-border-strong) !important;
     color: var(--devtool-strong) !important;
+}
+
+.json-creator-fullscreen .root-btn-editing {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: default;
+}
+
+.json-creator-fullscreen .root-btn-prefix {
+    flex: 0 0 auto;
+    color: var(--devtool-strong);
+    font-weight: 700;
+}
+
+.json-creator-fullscreen .root-btn-input {
+    display: block;
+    flex: 1 1 auto;
 }
 
 .json-creator-fullscreen .json-creator-tree-item.selected {
@@ -1505,25 +1640,35 @@ body.theme-light .json-creator-fullscreen img {
 .extract-json-content {
     display: flex !important;
     flex-direction: column !important;
-    max-height: 80vh !important;
+    block-size: min(80vh, 680px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    overflow: hidden !important;
 }
 
 .extract-json-body {
-    flex: 1 !important;
-    overflow-y: auto !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
     padding-bottom: 0 !important;
 }
 
+.extract-json-textarea {
+    flex: 1 !important;
+    inline-size: 100% !important;
+    min-height: 0 !important;
+    resize: none !important;
+    overflow: auto !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+}
+
 .extract-json-footer {
-    position: sticky;
-    bottom: 0;
-    background: #ffffff;
-    border-top: 1px solid #d0d0d0;
-    padding: 12px 20px;
+    flex: 0 0 auto;
     display: flex;
     gap: 12px;
     justify-content: flex-end;
-    z-index: 10;
 }
 
 /* Remove touch highlight flash */
@@ -2608,4 +2753,49 @@ body.theme-dark .modal-content.devtool-modal {
 .json-creator-fullscreen .modal-content.devtool-modal .script-ghost,
 .modal-content.devtool-modal .script-ghost {
     color: var(--script-ghost) !important;
+}
+
+.root-user-controls-body {
+    display: grid;
+    gap: 14px;
+}
+
+.root-user-control-item {
+    justify-content: flex-start;
+}
+
+.root-user-control-section,
+.root-allowed-options,
+.root-allowed-group {
+    display: grid;
+    gap: 8px;
+}
+
+.root-allowed-options {
+    margin-left: 22px;
+}
+
+.root-allowed-group-label {
+    color: var(--devtool-muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.root-allowed-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--root-control-columns, 4), minmax(0, 1fr));
+    gap: 6px;
+}
+
+.root-allowed-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 6px 8px;
+    border: 1px solid var(--devtool-border);
+    border-radius: 6px;
+    background: var(--devtool-field);
+    color: var(--devtool-text);
 }

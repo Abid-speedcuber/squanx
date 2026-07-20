@@ -143,13 +143,33 @@ function expandCompactAlgset(value) {
     return expandCompactNode(value.t, applyDefaultPairs({}, value.d || []));
 }
 
-function stringifyCompactAlgset(tree) {
-    return JSON.stringify(compactAlgset(tree));
+function extractAlgsetMetadata(value) {
+    if (!isObject(value)) return {};
+    if (isCompactAlgset(value) && isObject(value.m)) return clone(value.m);
+    if (isObject(value.__sq1Meta)) return clone(value.__sq1Meta);
+    return {};
+}
+
+function hasMeaningfulMetadata(value) {
+    if (!isObject(value)) return false;
+    const controls = isObject(value.userControls) ? value.userControls : {};
+    return Object.values(controls).some((control) => isObject(control) && (
+        control.enabled
+        || (Array.isArray(control.selected) && control.selected.length)
+        || (control.override !== undefined && control.override !== 'default')
+    ));
+}
+
+function stringifyCompactAlgset(tree, metadata = {}) {
+    const compact = compactAlgset(tree);
+    if (hasMeaningfulMetadata(metadata)) compact.m = clone(metadata);
+    return JSON.stringify(compact);
 }
 
 export {
     compactAlgset,
     expandCompactAlgset,
+    extractAlgsetMetadata,
     isCompactAlgset,
     stringifyCompactAlgset
 };

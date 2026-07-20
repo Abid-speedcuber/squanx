@@ -4,6 +4,11 @@
 
 import SquanLib from '../squanlib.js';
 
+// ── Karn → WCA unkarnify pipeline ────────────────────────────────────
+// The full pipeline lives in ../squanlib.js (SquanLib). We keep a single
+// shared instance so tempReplacements etc. persist across calls.
+const squanLib = new SquanLib();
+
 export function algToHex(scramble) {
     let tlHex = '011233455677';
     let blHex = '998bbaddcffe';
@@ -20,13 +25,16 @@ export function algToHex(scramble) {
 
 export function parseScramble(scramble) {
     const moves = [];
-    const parts = scramble.replace(/\//g, ' / ').trim().split(/\s+/).filter(Boolean);
+    const normalizedScramble = squanLib.addCommasPreservingSeparators(String(scramble).replace(/[()]/g, ''));
+    const parts = normalizedScramble.replace(/[/\\|]/g, ' / ').trim().split(/\s+/).filter(Boolean);
     for (const part of parts) {
         if (part === '/') {
             moves.push({ type: 'twist' });
         } else if (part.includes(',')) {
             const [top, bottom] = part.replace(/[()]/g, '').split(',').map(n => parseInt(n.trim()));
             if (!isNaN(top) && !isNaN(bottom)) moves.push({ type: 'turn', top, bottom });
+        } else if (/^-?\d/.test(part.replace(/[()]/g, ''))) {
+            throw new Error(`Invalid numeric turn: "${part}"`);
         }
     }
     return moves;
@@ -51,11 +59,6 @@ export function invertScramble(str) {
         return part.includes('(') ? `(${inverted})` : inverted;
     }).join('/');
 }
-
-// ── Karn → WCA unkarnify pipeline ────────────────────────────────────
-// The full pipeline lives in ../squanlib.js (SquanLib). We keep a single
-// shared instance so tempReplacements etc. persist across calls.
-const squanLib = new SquanLib();
 
 export function unkarnify(scramble) {
     return squanLib.unkarnify(scramble);

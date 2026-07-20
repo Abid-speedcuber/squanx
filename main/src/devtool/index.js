@@ -1,6 +1,6 @@
 import { ensureFeatureModules, ensureXlsxScript } from '../moduleLoader.js';
-import { AppState, DEFAULT_ALGSET, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveDevelopingRoot, saveLastScreen } from '../training.js';
-import { stringifyCompactAlgset } from '../algsetCodec.js';
+import { AppState, DEFAULT_ALGSET, USER_CONTROL_SECTIONS, generateNewScramble, importTrainingJSONData, renderApp, saveDevelopingJSONs, saveDevelopingRoot, saveLastScreen } from '../training.js';
+import { extractAlgsetMetadata, stringifyCompactAlgset } from '../algsetCodec.js';
 import {
     DEFAULT_LAYER,
     DOWN_MOVE_OPTIONS,
@@ -46,13 +46,17 @@ import { normalizeAlgorithmInput } from './parseAdapter.js';
 import {
     completeAlgsetScript,
     executeAlgsetScript,
-    formatScriptSummary,
     getAlgsetScriptSuggestions
 } from './algsetScript.js';
 
 const RUN_COUNT = 100;
 const SQUANX_WORDMARK = '<span class="squanx-brand"><span class="squango-sq">Squan</span><span class="squango-go">X</span></span>';
 const COMMAND_REFERENCE_URL = 'https://github.com/Abid-speedcuber/squanx/blob/ESmodule-build/docs/algset-script-command.md';
+const ROOT_USER_CONTROL_SECTIONS = [
+    ['middleLayer', 'Editable: Middle Layer'],
+    ['preAbf', 'Editable: Pre-ABF'],
+    ['postAbf', 'Editable: Post-ABF']
+];
 const SCRIPT_VALUE_PICKER_FIELDS = new Set(['top-layer', 'bottom-layer', 'parity', 'pre-abf', 'post-abf', 'rul', 'rdl', 'auf', 'adf']);
 const SCRIPT_PARITY_OPTIONS = [
     ['on', 'Overall No Parity'],
@@ -61,6 +65,11 @@ const SCRIPT_PARITY_OPTIONS = [
     ['tpbn', 'Black Parity, White No Parity'],
     ['tnbp', 'Black No Parity, White Parity'],
     ['tpbp', 'Both Color Parity']
+];
+const SCRIPT_PARITY_GROUPS = [
+    { value: 'ignore', label: 'Ignore', options: [] },
+    { value: 'overall', label: 'Overall', options: SCRIPT_PARITY_OPTIONS.slice(0, 2) },
+    { value: 'color', label: 'Color parity', options: SCRIPT_PARITY_OPTIONS.slice(2) }
 ];
 
 function normalizeScriptFieldAlias(field) {
@@ -93,8 +102,12 @@ function getScriptValuePickerRequest(text, cursor) {
     const field = normalizeScriptFieldAlias(match[1]);
     if (!SCRIPT_VALUE_PICKER_FIELDS.has(field)) return null;
     const value = match[2] || '';
+    const fieldStart = match.index + match[0].indexOf(match[1]);
+    const verbMatch = before.slice(0, fieldStart).match(/\b(append|set|add|remove)\s+$/i);
     return {
         field,
+        fieldStart,
+        verb: verbMatch?.[1]?.toLowerCase() || 'set',
         value,
         valueStart: cursor - value.length,
         valueEnd: cursor
@@ -266,6 +279,7 @@ class JSONCreator {
         this.root = null;
         this.abortController = null;
         this.shapeRenderPromise = null;
+        this.scriptTerminals = new Map();
         this.state = {
             activeRoot: 'default',
             tree: {},
@@ -446,10 +460,23 @@ class JSONCreator {
                     <button class="json-creator-toolbar-btn" data-action="delete" title="Delete"><img src="viz/delete.svg" width="18" height="18" alt=""></button>
                     <button class="json-creator-toolbar-btn" data-action="open-extra-tools" title="Extra Tools"><img src="viz/extra-tools.svg" width="18" height="18" alt=""></button>
                 </div>
-                <button id="rootSelectorBtn" class="json-creator-root-btn" data-action="open-root-selector">Root: ${escapeHtml(this.state.activeRoot)} <span aria-hidden="true">▾</span></button>
+                ${this.renderRootSelectorControl()}
                 <div class="json-creator-tree" id="jsonCreatorTree">${this.renderTreeNode(this.state.tree, '', 0)}</div>
             </div>
         `;
+    }
+
+    renderRootSelectorControl() {
+        const inlineRenaming = this.state.renamingRoot === this.state.activeRoot && this.state.modal?.type !== 'root-selector';
+        if (inlineRenaming) {
+            return `
+                <div class="json-creator-root-btn root-btn-editing">
+                    <span class="root-btn-prefix">Root:</span>
+                    <input id="rootRenameInput" class="root-item-input root-btn-input" data-action="root-rename-input" value="${escapeHtml(this.state.renamingRootValue || this.state.activeRoot)}" spellcheck="false">
+                </div>
+            `;
+        }
+        return `<button id="rootSelectorBtn" class="json-creator-root-btn" data-action="open-root-selector">Root: ${escapeHtml(this.state.activeRoot)} <span aria-hidden="true">▾</span></button>`;
     }
 
     renderTreeNode(node, path, level) {
@@ -716,6 +743,7 @@ class JSONCreator {
         if (modal.type === 'file-import') return this.renderFileImportModal(modal);
         if (modal.type === 'bulk-import') return this.renderBulkImportModal();
         if (modal.type === 'data-management') return this.renderDataManagementModal();
+        if (modal.type === 'root-user-controls') return this.renderRootUserControlsModal(modal);
         if (modal.type === 'devtool-help') return this.renderDevtoolHelpModal();
         if (modal.type === 'algset-script') return this.renderAlgsetScriptModal(modal);
         return '';
@@ -784,8 +812,8 @@ class JSONCreator {
                 <div class="modal-content extract-json-content">
                     <div class="modal-header"><h2>Extract JSON: ${escapeHtml(this.state.activeRoot)}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
                     <div class="modal-body extract-json-body">
-                        <textarea id="extractedJSON" readonly style="width:100%;height:55vh;font-family:monospace;">${escapeHtml(jsonText)}</textarea>
-                        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
+                        <textarea id="extractedJSON" class="extract-json-textarea" readonly>${escapeHtml(jsonText)}</textarea>
+                        <div class="extract-json-footer">
                             <button class="json-creator-btn json-creator-btn-secondary" data-action="copy-extracted-json">Copy</button>
                             <button class="json-creator-btn" data-action="train-extracted-json">Train</button>
                             <button class="json-creator-btn" data-action="download-root-json">Download</button>
@@ -849,6 +877,57 @@ class JSONCreator {
                         <button class="json-creator-btn json-creator-btn-secondary" data-action="reset-all-data">Reset All Data</button>
                     </div>
                 </div>
+            </div>
+        `;
+    }
+
+    renderRootUserControlsModal(modal) {
+        const metadata = this.getRootMetadata(modal.rootName);
+        return `
+            <div class="modal active confirmation-modal" data-action="modal-backdrop">
+                <div class="modal-content devtool-modal">
+                    <div class="modal-header"><h2>Root User Controls</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
+                    <div class="modal-body root-user-controls-body">
+                        ${ROOT_USER_CONTROL_SECTIONS.map(([key, label]) => `
+                            <div class="root-user-control-section">
+                                <label class="json-creator-grid-item root-user-control-item">
+                                    <input type="checkbox" data-action="root-user-control-checkbox" data-root-control="${key}" ${metadata.userControls[key]?.enabled ? 'checked' : ''}>
+                                    <span>${escapeHtml(label)}</span>
+                                </label>
+                                ${metadata.userControls[key]?.enabled ? this.renderRootAllowedOptions(key, metadata.userControls[key]) : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderRootAllowedOptions(controlKey, control) {
+        const config = USER_CONTROL_SECTIONS[controlKey];
+        if (!config) return '';
+        const allowed = new Set(control.allowed);
+        const grouped = config.options.reduce((groups, option) => {
+            const group = option.group || '';
+            if (!groups.has(group)) groups.set(group, []);
+            groups.get(group).push(option);
+            return groups;
+        }, new Map());
+        return `
+            <div class="root-allowed-options" style="--root-control-columns:${config.columns};">
+                ${[...grouped.entries()].map(([group, options]) => `
+                    <div class="root-allowed-group">
+                        ${group ? `<div class="root-allowed-group-label">${escapeHtml(group)}</div>` : ''}
+                        <div class="root-allowed-grid">
+                            ${options.map((option) => `
+                                <label class="root-allowed-option">
+                                    <input type="checkbox" data-action="root-user-control-allowed" data-root-control="${controlKey}" data-root-control-option="${escapeHtml(option.id)}" ${allowed.has(option.id) ? 'checked' : ''}>
+                                    <span>${escapeHtml(option.label)}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+                `).join('')}
             </div>
         `;
     }
@@ -972,26 +1051,37 @@ class JSONCreator {
         });
         const completion = getScriptCompletionSuffix(script, cursor, suggestions);
         const highlighted = highlightAlgsetScript(script, cursor, completion);
+        const entries = modal.entries || [];
+        const prompt = this.getAlgsetScriptPrompt(modal);
         return `
             <div class="modal active extract-json-modal" data-action="modal-backdrop">
                 <div class="modal-content devtool-modal algset-script-modal">
-                    <div class="modal-header"><h2>Run Script: ${escapeHtml(modal.scopeLabel || 'root')}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
-                    <div class="modal-body algset-script-body">
-                        <p class="algset-script-help"><a href="${COMMAND_REFERENCE_URL}" target="_blank" rel="noopener noreferrer">Command reference</a></p>
-                        <div class="algset-script-editor">
-                            <pre id="algsetScriptHighlight" class="algset-script-highlight" aria-hidden="true">${highlighted}</pre>
-                            <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="if case-name contains &quot;Jf/&quot; in here append top-layer=W11W55Y33W77.">${escapeHtml(script)}</textarea>
+                    <div class="modal-header"><h2>Script Terminal: ${escapeHtml(modal.scopeLabel || 'root')}</h2><button class="close-btn" data-action="modal-cancel">×</button></div>
+                    <div class="modal-body algset-script-body algset-script-terminal">
+                        <div id="algsetScriptScrollback" class="algset-script-console">
+                            ${entries.map((entry) => `
+                                <div class="algset-script-entry">
+                                    <div class="algset-script-command-line"><span class="algset-script-shell-prompt">${escapeHtml(prompt)}</span><pre class="algset-script-entry-command">${highlightAlgsetScript(entry.command, entry.command.length, '')}</pre></div>
+                                    <pre class="algset-script-entry-output ${entry.type === 'error' ? 'error' : ''}">${escapeHtml(entry.output)}</pre>
+                                </div>
+                            `).join('')}
+                            <div class="algset-script-prompt-row">
+                                <span class="algset-script-shell-prompt" aria-hidden="true">${escapeHtml(prompt)}</span>
+                                <div class="algset-script-editor">
+                                    <pre id="algsetScriptHighlight" class="algset-script-highlight" aria-hidden="true">${highlighted}</pre>
+                                    <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="Insert command here (type \"help\" for the command reference)">${escapeHtml(script)}</textarea>
+                                </div>
+                            </div>
                         </div>
-                        <div class="algset-script-actions">
-                            <button class="json-creator-btn json-creator-btn-secondary" data-action="modal-cancel">Close</button>
-                            <button class="json-creator-btn" data-action="run-algset-script">Run</button>
-                        </div>
-                        ${modal.summary ? `<pre class="algset-script-summary">${escapeHtml(modal.summary)}</pre>` : ''}
                     </div>
                 </div>
                 ${modal.scriptPicker ? this.renderScriptValuePicker(modal.scriptPicker) : ''}
             </div>
         `;
+    }
+
+    getAlgsetScriptPrompt(modal = this.state.modal) {
+        return '-> ';
     }
 
     renderScriptValuePicker(picker) {
@@ -1040,31 +1130,82 @@ class JSONCreator {
     renderScriptOptionsPicker(picker) {
         const values = new Set(parseScriptPickerList(picker.value));
         if (picker.field === 'parity') {
-            return `<div class="script-picker-grid script-picker-grid-wide">${SCRIPT_PARITY_OPTIONS.map(([value, label]) => this.renderScriptPickerCheckbox(value, values.has(value), label)).join('')}</div>`;
+            return this.renderScriptParityPicker(picker, values);
         }
         const config = this.getScriptOptionsPickerConfig(picker.field);
         return `
             <div class="script-picker-section">
                 <h3>${escapeHtml(config.label)}</h3>
-                <div class="script-picker-grid">${config.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value))).join('')}</div>
+                ${config.groups ? config.groups.map((group) => `
+                    <div class="script-picker-subsection">
+                        <div class="script-picker-subtitle">${escapeHtml(group.label)}</div>
+                        <div class="script-picker-grid">${group.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value), group.outputField)).join('')}</div>
+                    </div>
+                `).join('') : `<div class="script-picker-grid">${config.options.map((value) => this.renderScriptPickerCheckbox(value, values.has(String(value)), String(value))).join('')}</div>`}
             </div>
         `;
+    }
+
+    renderScriptParityPicker(picker, values) {
+        const mode = picker.parityMode || this.getScriptParityMode(values);
+        const group = SCRIPT_PARITY_GROUPS.find((item) => item.value === mode) || SCRIPT_PARITY_GROUPS[0];
+        return `
+            <div class="script-picker-section">
+                <div class="script-parity-mode-grid">
+                    ${SCRIPT_PARITY_GROUPS.map((item) => `
+                        <label class="json-creator-grid-item script-picker-option script-parity-mode-option">
+                            <input type="radio" name="scriptParityMode" data-action="script-parity-mode" value="${escapeHtml(item.value)}" ${item.value === mode ? 'checked' : ''}>
+                            <span>${escapeHtml(item.label)}</span>
+                        </label>
+                    `).join('')}
+                </div>
+                ${group.options.length ? `
+                    <div class="script-picker-grid script-picker-grid-wide">
+                        ${group.options.map(([value, label]) => this.renderScriptPickerCheckbox(value, values.has(value), label)).join('')}
+                    </div>
+                ` : '<p class="script-picker-hint">Insert ignore to clear parity instead of storing it as a parity value.</p>'}
+            </div>
+        `;
+    }
+
+    getScriptParityMode(values) {
+        if (values.has('ignore')) return 'ignore';
+        if (values.has('on') || values.has('op')) return 'overall';
+        if ([...values].some((value) => SCRIPT_PARITY_OPTIONS.slice(2).some(([option]) => option === value))) return 'color';
+        return 'ignore';
     }
 
     getScriptOptionsPickerConfig(field) {
         if (field === 'auf') return { label: 'Post AUF', options: MOVE_OPTIONS };
         if (field === 'adf') return { label: 'Post ADF', options: DOWN_MOVE_OPTIONS };
-        if (field === 'post-abf') return { label: 'Post ABF values', options: MOVE_OPTIONS };
+        if (field === 'post-abf') {
+            return {
+                label: 'Post ABF values',
+                groups: [
+                    { label: 'Post AUF', options: MOVE_OPTIONS },
+                    { label: 'Post ADF', options: DOWN_MOVE_OPTIONS }
+                ]
+            };
+        }
+        if (field === 'pre-abf') {
+            return {
+                label: 'Pre ABF values',
+                groups: [
+                    { label: 'Pre AUF', outputField: 'pre-auf', options: NUMBER_OPTIONS },
+                    { label: 'Pre ADF', outputField: 'pre-adf', options: NUMBER_OPTIONS }
+                ]
+            };
+        }
         return {
             label: field === 'rdl' ? 'Pre ADF' : field === 'rul' ? 'Pre AUF' : 'Pre ABF values',
             options: NUMBER_OPTIONS
         };
     }
 
-    renderScriptPickerCheckbox(value, checked, label = value) {
+    renderScriptPickerCheckbox(value, checked, label = value, outputField = '') {
         return `
             <label class="json-creator-grid-item script-picker-option">
-                <input type="checkbox" data-script-picker-value="${escapeHtml(value)}" ${checked ? 'checked' : ''}>
+                <input type="checkbox" data-script-picker-value="${escapeHtml(value)}" ${outputField ? `data-script-picker-output-field="${escapeHtml(outputField)}"` : ''} ${checked ? 'checked' : ''}>
                 <span>${escapeHtml(label)}</span>
             </label>
         `;
@@ -1120,8 +1261,11 @@ class JSONCreator {
             this.updateScriptSuggestions();
         }
         if (scriptInput) {
+            this.resizeAlgsetScriptInput(scriptInput);
             scriptInput.addEventListener('scroll', () => this.syncScriptEditorScroll(scriptInput), { signal: this.abortController.signal });
         }
+        const scriptScrollback = this.root?.querySelector('#algsetScriptScrollback');
+        if (scriptScrollback && !options.skipScriptFocus) scriptScrollback.scrollTop = scriptScrollback.scrollHeight;
         const treeRename = this.root?.querySelector('#treeRenameInput');
         if (treeRename) {
             treeRename.focus();
@@ -1177,6 +1321,10 @@ class JSONCreator {
         if (!target.closest('.info-box')) this.closeInfoBoxes();
         if (target.id === 'algsetScriptInput') {
             setTimeout(() => this.updateScriptCursorFromInput(target), 0);
+        }
+        if (this.state.modal?.type === 'algset-script' && target.closest('.algset-script-console') && target.id !== 'algsetScriptInput') {
+            setTimeout(() => this.focusAlgsetScriptPromptIfNoSelection(), 0);
+            return;
         }
         if (this.state.contextMenu && !target.closest('[data-context-menu]')) {
             const keepRootSelector = this.state.modal?.type === 'root-selector' && target.closest('.root-selector-modal');
@@ -1245,6 +1393,9 @@ class JSONCreator {
         if (action === 'reset-case') return this.resetCase();
         if (action === 'run-root') return this.runJSON();
         if (action === 'extract-json') return this.extractJSON();
+        if (action === 'export-active-root-json') return this.exportRootJSON(this.state.activeRoot);
+        if (action === 'train-active-root') return this.trainRoot(this.state.activeRoot);
+        if (action === 'open-root-user-controls') return this.openRootUserControls();
         if (action === 'open-data-management') return this.update({ modal: { type: 'data-management' } });
         if (action === 'close') return this.close();
         if (action === 'modal-cancel') return this.closeModal(false);
@@ -1305,6 +1456,12 @@ class JSONCreator {
             this.openContextMenu(event.clientX, event.clientY, 'root-item', '', { rootName: rootRow.dataset.root, keepModal: true });
             return;
         }
+        const rootButton = event.target.closest('#rootSelectorBtn');
+        if (rootButton) {
+            event.preventDefault();
+            this.openContextMenu(event.clientX, event.clientY, 'root-button', '', { rootName: this.state.activeRoot });
+            return;
+        }
         if (event.target.id === 'jsonCreatorTree') {
             event.preventDefault();
             this.openContextMenu(event.clientX, event.clientY, 'root', '');
@@ -1333,7 +1490,7 @@ class JSONCreator {
         }
         if (target.dataset.action === 'shape-code-input') {
             if (this.state.shapeValueEdit) {
-                this.state.shapeValueEdit.value = target.value.toUpperCase().slice(0, 12);
+                this.state.shapeValueEdit.value = target.value.slice(0, 12);
                 this.state.shapeValueEdit.invalid = false;
                 if (target.value !== this.state.shapeValueEdit.value) target.value = this.state.shapeValueEdit.value;
             }
@@ -1346,10 +1503,28 @@ class JSONCreator {
         const target = event.target;
         if (target.matches('input[type="file"]')) this.updateFileName(target);
         if (target.dataset.action === 'parity-mode') return this.updateParityMode(target.dataset.prefix, target.value);
+        if (target.dataset.action === 'script-parity-mode') return this.updateScriptParityMode(target.value);
+        if (target.dataset.action === 'root-user-control-checkbox') return this.updateRootUserControl(target.dataset.rootControl, target.checked);
+        if (target.dataset.action === 'root-user-control-allowed') return this.updateRootAllowedOption(target.dataset.rootControl, target.dataset.rootControlOption, target.checked);
         if (target.matches('input[type="checkbox"][data-field]')) {
             const value = target.dataset.valueType === 'number' ? Number(target.dataset.value) : target.dataset.value;
             return this.updateArrayField(target.dataset.prefix, target.dataset.field, value, target.checked);
         }
+    }
+
+    updateScriptParityMode(parityMode) {
+        const modal = this.state.modal;
+        const picker = modal?.scriptPicker;
+        if (modal?.type !== 'algset-script' || picker?.field !== 'parity') return;
+        this.update({
+            modal: {
+                ...modal,
+                scriptPicker: {
+                    ...picker,
+                    parityMode
+                }
+            }
+        });
     }
 
     updateFileName(input) {
@@ -1384,9 +1559,13 @@ class JSONCreator {
                 event.preventDefault();
                 if (this.openScriptValuePickerFromInput(event.target)) return;
                 this.completeAlgsetScriptInput();
-            } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                if (this.navigateAlgsetScriptHistory(event.target, event.key === 'ArrowUp' ? -1 : 1)) {
+                    event.preventDefault();
+                }
+            } else if (event.key === 'Enter' && !event.isComposing) {
                 event.preventDefault();
-                this.runAlgsetScript();
+                this.handleAlgsetScriptEnter(event.target);
             }
             return;
         }
@@ -1804,6 +1983,98 @@ class JSONCreator {
         selector.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - margin)}px`;
     }
 
+    getRootMetadata(rootName = this.state.activeRoot) {
+        const source = AppState.developingJSONMetadata?.[rootName] || {};
+        const controls = source.userControls && typeof source.userControls === 'object' ? source.userControls : {};
+        return {
+            userControls: {
+                middleLayer: this.normalizeRootUserControl('middleLayer', controls.middleLayer),
+                preAbf: this.normalizeRootUserControl('preAbf', controls.preAbf),
+                postAbf: this.normalizeRootUserControl('postAbf', controls.postAbf)
+            }
+        };
+    }
+
+    getRootMetadataFromImport(data) {
+        const metadata = extractAlgsetMetadata(data);
+        const controls = metadata.userControls && typeof metadata.userControls === 'object' ? metadata.userControls : {};
+        return {
+            userControls: {
+                middleLayer: this.normalizeRootUserControl('middleLayer', controls.middleLayer),
+                preAbf: this.normalizeRootUserControl('preAbf', controls.preAbf),
+                postAbf: this.normalizeRootUserControl('postAbf', controls.postAbf)
+            }
+        };
+    }
+
+    normalizeRootUserControl(section, value = {}) {
+        const optionIds = section ? this.getRootControlOptionIds(section) : [];
+        const source = value && typeof value === 'object' ? value : {};
+        const selectedSource = Array.isArray(source.selected) ? source.selected : this.getLegacyRootOverrideIds(section, source.override);
+        const allowed = Array.isArray(source.allowed) ? this.normalizeRootControlIds(section, source.allowed) : optionIds;
+        return {
+            enabled: Boolean(source.enabled),
+            allowed,
+            selected: this.normalizeRootControlIds(section, selectedSource)
+        };
+    }
+
+    getRootControlOptionIds(section) {
+        return (USER_CONTROL_SECTIONS[section]?.options || []).map((option) => option.id);
+    }
+
+    normalizeRootControlIds(section, values) {
+        const valid = new Set(this.getRootControlOptionIds(section));
+        if (!Array.isArray(values)) return [];
+        return [...new Set(values.map(String).filter((value) => valid.has(value)))];
+    }
+
+    getLegacyRootOverrideIds(section, override) {
+        if (!section || override === undefined || override === null || override === 'default') return [];
+        const values = Array.isArray(override) ? override : [override];
+        const valueSet = new Set(values.map(String));
+        return (USER_CONTROL_SECTIONS[section]?.options || [])
+            .filter((option) => valueSet.has(String(option.value)))
+            .map((option) => option.id);
+    }
+
+    setRootMetadata(rootName, metadata) {
+        if (!rootName) return;
+        AppState.developingJSONMetadata = AppState.developingJSONMetadata || {};
+        AppState.developingJSONMetadata[rootName] = metadata;
+        saveDevelopingJSONs();
+    }
+
+    openRootUserControls(rootName = this.state.activeRoot) {
+        if (!rootName || !AppState.developingJSONs[rootName]) return;
+        this.update({ modal: { type: 'root-user-controls', rootName }, contextMenu: null });
+    }
+
+    updateRootUserControl(controlKey, enabled) {
+        const rootName = this.state.modal?.rootName || this.state.activeRoot;
+        const metadata = this.getRootMetadata(rootName);
+        if (!metadata.userControls[controlKey]) return;
+        metadata.userControls[controlKey].enabled = enabled;
+        if (!enabled) metadata.userControls[controlKey].selected = [];
+        this.setRootMetadata(rootName, metadata);
+        this.render();
+    }
+
+    updateRootAllowedOption(controlKey, optionId, allowed) {
+        const rootName = this.state.modal?.rootName || this.state.activeRoot;
+        const metadata = this.getRootMetadata(rootName);
+        const control = metadata.userControls[controlKey];
+        if (!control) return;
+        const allowedSet = new Set(control.allowed);
+        if (allowed) allowedSet.add(optionId);
+        else allowedSet.delete(optionId);
+        control.allowed = this.normalizeRootControlIds(controlKey, [...allowedSet]);
+        const clippedAllowed = new Set(control.allowed);
+        control.selected = this.normalizeRootControlIds(controlKey, control.selected.filter((id) => clippedAllowed.has(id)));
+        this.setRootMetadata(rootName, metadata);
+        this.render();
+    }
+
     openExtraTools(event) {
         this.openContextMenu(event.clientX, event.clientY, 'extra', '');
     }
@@ -1816,7 +2087,9 @@ class JSONCreator {
                 { label: 'Reset Root', action: 'reset-root' },
                 { label: 'Bulk Import', action: 'open-bulk-import' },
                 { separator: true },
-                { label: 'Help', action: 'open-devtool-help' }
+                { label: 'Train', action: 'train-active-root' },
+                { label: 'Export as JSON', action: 'export-active-root-json' },
+                { label: 'Edit Trainer-side User Control', action: 'open-root-user-controls' }
             ];
         }
         if (menu.type === 'root-item') {
@@ -1826,6 +2099,20 @@ class JSONCreator {
                 { label: 'Reset', action: 'reset-root-item' },
                 { separator: true },
                 { label: 'Delete', action: 'delete-root' }
+            ];
+        }
+        if (menu.type === 'root-button') {
+            return [
+                { label: 'Rename', action: 'rename-active-root-inline' },
+                { label: 'Case Template', action: 'open-case-template' },
+                { label: 'Import Data to Root', action: 'import-root-data' },
+                { label: 'Bulk Import', action: 'open-bulk-import' },
+                { separator: true },
+                { label: 'Train', action: 'train-active-root' },
+                { label: 'Export as JSON', action: 'export-active-root-json' },
+                { label: 'Edit Trainer-side User Control', action: 'open-root-user-controls' },
+                { separator: true },
+                { label: 'Delete', action: 'delete-active-root' }
             ];
         }
         if (menu.type === 'root') {
@@ -1881,9 +2168,18 @@ class JSONCreator {
             const rootName = menu.rootName;
             return this.startRootInlineRename(rootName);
         }
+        if (action === 'rename-active-root-inline') return this.startActiveRootInlineRename();
+        if (action === 'export-active-root-json') return this.exportRootJSON(this.state.activeRoot);
+        if (action === 'train-active-root') return this.trainRoot(this.state.activeRoot);
+        if (action === 'reset-active-root') return this.resetRoot();
+        if (action === 'delete-active-root') return this.deleteRoot(this.state.activeRoot);
         if (action === 'export-root-json') return this.exportRootJSON(menu.rootName);
+        if (action === 'train-root') return this.trainRoot(menu.rootName);
         if (action === 'reset-root-item') return this.resetRootName(menu.rootName);
         if (action === 'delete-root') return this.deleteRoot(menu.rootName);
+        if (action === 'open-root-user-controls') return this.openRootUserControls(menu.rootName);
+        if (action === 'open-case-template') return this.openCaseTemplate();
+        if (action === 'import-root-data') return this.update({ modal: { type: 'file-import', scope: 'root', title: `Import Data to Root: ${this.state.activeRoot}` }, contextMenu: null });
         if (action === 'new-case') return this.newCase(menu.path);
         if (action === 'new-folder') return this.newFolder(menu.path);
         if (action === 'open-bulk-import') return this.update({ modal: { type: 'bulk-import', targetPath: menu.path }, contextMenu: null });
@@ -1957,6 +2253,7 @@ class JSONCreator {
         if (AppState.developingJSONs[rootName]) return showFloatingMessage('A root with this name already exists', 'error');
         this.persistRoot();
         AppState.developingJSONs[rootName] = {};
+        AppState.developingJSONMetadata[rootName] = this.getRootMetadata(rootName);
         saveDevelopingJSONs();
         this.clearRootRenameState();
         this.closeModal(false);
@@ -1971,6 +2268,7 @@ class JSONCreator {
         this.persistRoot();
         const rootName = getUniqueName(AppState.developingJSONs, 'New Root');
         AppState.developingJSONs[rootName] = {};
+        AppState.developingJSONMetadata[rootName] = this.getRootMetadata(rootName);
         saveDevelopingJSONs();
         this.state.modal = { type: 'root-selector' };
         this.state.contextMenu = null;
@@ -1986,6 +2284,17 @@ class JSONCreator {
         this.state.renamingRootValue = rootName;
         this.state.newRootRename = options.removeOnCancel ? rootName : '';
         this.state.modal = { type: 'root-selector' };
+        this.state.contextMenu = null;
+        this.render();
+    }
+
+    startActiveRootInlineRename() {
+        const rootName = this.state.activeRoot;
+        if (!rootName || !AppState.developingJSONs[rootName]) return;
+        this.state.renamingRoot = rootName;
+        this.state.renamingRootValue = rootName;
+        this.state.newRootRename = '';
+        this.state.modal = null;
         this.state.contextMenu = null;
         this.render();
     }
@@ -2027,6 +2336,7 @@ class JSONCreator {
     removeNewRootFromRename(rootName) {
         if (rootName && AppState.developingJSONs[rootName]) {
             delete AppState.developingJSONs[rootName];
+            delete AppState.developingJSONMetadata[rootName];
             clearTemplate(rootName);
             clearExpandedFolders(rootName);
         }
@@ -2069,6 +2379,8 @@ class JSONCreator {
             : loadExpandedFolders(oldName);
         AppState.developingJSONs[rootName] = AppState.developingJSONs[oldName] || {};
         delete AppState.developingJSONs[oldName];
+        AppState.developingJSONMetadata[rootName] = this.getRootMetadata(oldName);
+        delete AppState.developingJSONMetadata[oldName];
         saveExpandedFolders(rootName, Array.isArray(expandedFolders) ? expandedFolders : []);
         clearExpandedFolders(oldName);
         if (template) saveTemplate(rootName, template);
@@ -2095,8 +2407,25 @@ class JSONCreator {
         const root = AppState.developingJSONs[rootName];
         if (!root) return;
         if (rootName === this.state.activeRoot) this.persistRoot();
-        downloadTextJSON(rootName, stringifyCompactAlgset(rootName === this.state.activeRoot ? this.state.tree : root));
+        downloadTextJSON(rootName, stringifyCompactAlgset(rootName === this.state.activeRoot ? this.state.tree : root, this.getRootMetadata(rootName)));
         this.update({ contextMenu: null });
+    }
+
+    trainRoot(rootName) {
+        const root = AppState.developingJSONs[rootName];
+        if (!root) return;
+        if (rootName === this.state.activeRoot) this.persistRoot();
+        importTrainingJSONData(rootName, clone(rootName === this.state.activeRoot ? this.state.tree : root), {
+            activate: true,
+            selectAll: true,
+            metadata: this.getRootMetadata(rootName)
+        });
+        saveLastScreen('training');
+        this.abortController?.abort();
+        this.root?.remove();
+        this.root = null;
+        renderApp();
+        void generateNewScramble();
     }
 
     resetRootName(rootName) {
@@ -2121,6 +2450,7 @@ class JSONCreator {
     deleteRoot(rootName) {
         if (!rootName || !AppState.developingJSONs[rootName]) return;
         delete AppState.developingJSONs[rootName];
+        delete AppState.developingJSONMetadata[rootName];
         clearTemplate(rootName);
         clearExpandedFolders(rootName);
         if (!Object.keys(AppState.developingJSONs).length) {
@@ -2157,7 +2487,7 @@ class JSONCreator {
     }
 
     getExtractedJSONText() {
-        return stringifyCompactAlgset(this.state.tree);
+        return stringifyCompactAlgset(this.state.tree, this.getRootMetadata());
     }
 
     downloadRootJSON() {
@@ -2166,7 +2496,7 @@ class JSONCreator {
 
     trainExtractedJSON() {
         this.persistRoot();
-        importTrainingJSONData(this.state.activeRoot, clone(this.state.tree), { activate: true, selectAll: true });
+        importTrainingJSONData(this.state.activeRoot, clone(this.state.tree), { activate: true, selectAll: true, metadata: this.getRootMetadata() });
         saveLastScreen('training');
         this.abortController?.abort();
         this.root?.remove();
@@ -2178,22 +2508,54 @@ class JSONCreator {
     openAlgsetScript(scopePath = '') {
         const scopeNode = scopePath ? getNode(this.state.tree, scopePath) : this.state.tree;
         const scopeLabel = scopePath && scopeNode ? getPathName(scopePath) : this.state.activeRoot;
+        const terminalKey = this.getAlgsetScriptTerminalKey(scopePath);
+        const terminal = this.getAlgsetScriptTerminal(terminalKey);
         this.update({
             modal: {
                 type: 'algset-script',
                 scopePath: isFolder(scopeNode) ? scopePath : '',
                 scopeLabel,
-                script: loadLastAlgsetScript(),
-                summary: ''
+                terminalKey,
+                script: terminal.draft,
+                cursor: terminal.draft.length,
+                entries: terminal.entries,
+                historyIndex: terminal.history.length,
+                historyDraft: terminal.draft
             },
             contextMenu: null
         });
+    }
+
+    getAlgsetScriptTerminalKey(scopePath = '') {
+        return `${this.state.activeRoot || 'root'}::${scopePath || ''}`;
+    }
+
+    getAlgsetScriptTerminal(key = this.getAlgsetScriptTerminalKey()) {
+        if (!this.scriptTerminals.has(key)) {
+            const lastCommand = loadLastAlgsetScript();
+            this.scriptTerminals.set(key, {
+                entries: [],
+                history: lastCommand ? [lastCommand] : [],
+                draft: '',
+                lastCommand
+            });
+        }
+        return this.scriptTerminals.get(key);
+    }
+
+    syncAlgsetScriptTerminal(modal = this.state.modal) {
+        if (modal?.type !== 'algset-script') return null;
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        terminal.entries = modal.entries || [];
+        terminal.draft = modal.script || '';
+        return terminal;
     }
 
     updateScriptSuggestions() {
         const input = this.root?.querySelector('#algsetScriptInput');
         const highlight = this.root?.querySelector('#algsetScriptHighlight');
         if (!input || !highlight) return;
+        this.resizeAlgsetScriptInput(input);
         const suggestions = getAlgsetScriptSuggestions({
             tree: this.state.tree,
             text: input.value,
@@ -2205,10 +2567,18 @@ class JSONCreator {
         this.syncScriptEditorScroll(input);
     }
 
+    resizeAlgsetScriptInput(input) {
+        const height = Math.min(180, Math.max(22, input.scrollHeight));
+        input.style.height = `${height}px`;
+        const highlight = this.root?.querySelector('#algsetScriptHighlight');
+        if (highlight) highlight.style.height = `${height}px`;
+    }
+
     updateScriptCursorFromInput(input) {
         if (this.state.modal?.type !== 'algset-script') return;
         this.state.modal.script = input.value;
         this.state.modal.cursor = input.selectionStart ?? input.value.length;
+        this.syncAlgsetScriptTerminal();
         this.updateScriptSuggestions();
     }
 
@@ -2217,6 +2587,15 @@ class JSONCreator {
         if (!highlight || !input) return;
         highlight.scrollTop = input.scrollTop;
         highlight.scrollLeft = input.scrollLeft;
+    }
+
+    focusAlgsetScriptPromptIfNoSelection() {
+        if (String(window.getSelection?.()?.toString() || '')) return;
+        const input = this.root?.querySelector('#algsetScriptInput');
+        if (!input) return;
+        input.focus();
+        input.selectionStart = input.selectionEnd = input.value.length;
+        this.updateScriptCursorFromInput(input);
     }
 
     completeAlgsetScriptInput() {
@@ -2262,7 +2641,8 @@ class JSONCreator {
         return {
             ...request,
             kind: layer ? 'layer' : 'options',
-            value
+            value,
+            parityMode: request.field === 'parity' ? this.getScriptParityMode(new Set(parsedValues)) : undefined
         };
     }
 
@@ -2280,8 +2660,13 @@ class JSONCreator {
         const value = picker.kind === 'layer'
             ? (this.root?.querySelector('#scriptLayerPickerInput')?.value || picker.value || DEFAULT_LAYER)
             : this.getScriptOptionsPickerValue();
-        const nextScript = `${script.slice(0, picker.valueStart)}${value}${script.slice(picker.valueEnd)}`;
-        const nextCursor = picker.valueStart + value.length;
+        const replacement = picker.field === 'pre-abf' && picker.kind !== 'layer'
+            ? this.getPreAbfScriptPickerReplacement(picker)
+            : null;
+        const replaceStart = replacement ? picker.fieldStart : picker.valueStart;
+        const insertValue = replacement || value;
+        const nextScript = `${script.slice(0, replaceStart)}${insertValue}${script.slice(picker.valueEnd)}`;
+        const nextCursor = replaceStart + insertValue.length;
         this.update({
             modal: {
                 ...modal,
@@ -2293,41 +2678,161 @@ class JSONCreator {
         });
     }
 
+    getPreAbfScriptPickerReplacement(picker) {
+        const grouped = new Map();
+        for (const input of this.root?.querySelectorAll('[data-script-picker-value]:checked') || []) {
+            const field = input.dataset.scriptPickerOutputField;
+            if (!field) continue;
+            if (!grouped.has(field)) grouped.set(field, []);
+            grouped.get(field).push(input.dataset.scriptPickerValue);
+        }
+        const verb = picker.verb || 'set';
+        const preAuf = formatScriptPickerList([...(new Set(grouped.get('pre-auf') || []))]);
+        const preAdf = formatScriptPickerList([...(new Set(grouped.get('pre-adf') || []))]);
+        return `pre-auf=${preAuf} and ${verb} pre-adf=${preAdf}`;
+    }
+
     getScriptOptionsPickerValue() {
+        const picker = this.state.modal?.scriptPicker;
+        if (picker?.field === 'parity') {
+            const mode = this.root?.querySelector('[data-action="script-parity-mode"]:checked')?.value || picker.parityMode || 'ignore';
+            if (mode === 'ignore') return 'ignore';
+        }
         const checked = [...this.root?.querySelectorAll('[data-script-picker-value]:checked') || []]
             .map((input) => input.dataset.scriptPickerValue)
             .filter((value) => value !== undefined);
-        return formatScriptPickerList(checked);
+        const uniqueValues = [...new Set(checked)];
+        return formatScriptPickerList(uniqueValues);
+    }
+
+    formatTerminalScriptSummary(summary) {
+        const lines = [];
+        const counters = [
+            ['Matched cases', summary.matchedCases],
+            ['Changed cases', summary.changedCases],
+            ['Created cases', summary.createdCases],
+            ['Created folders', summary.createdFolders],
+            ['Deleted cases', summary.deletedCases],
+            ['Deleted folders', summary.deletedFolders],
+            ['Arranged directories', summary.arrangedDirectories],
+            ['Arranged items', summary.arrangedItems]
+        ];
+        for (const [label, value] of counters) {
+            if (value) lines.push(`${label}: ${value}`);
+        }
+        const fields = Object.entries(summary.fieldsChanged || {})
+            .filter(([, count]) => count)
+            .map(([field, count]) => `${field} ${count}`)
+            .join(', ');
+        if (fields) lines.push(`Fields changed: ${fields}`);
+        if (summary.warnings?.length) lines.push(`Warnings: ${summary.warnings.length}`, ...summary.warnings.map((warning) => `- ${warning}`));
+        if (summary.errors?.length) lines.push(`Errors: ${summary.errors.length}`, ...summary.errors.map((error) => `- ${error}`));
+        return lines.join('\n') || 'No changes.';
+    }
+
+    handleAlgsetScriptEnter(input) {
+        const value = input.value || '';
+        const cursor = input.selectionStart ?? value.length;
+        const beforeCursor = value.slice(0, cursor);
+        if (/\\[ \t]*$/.test(beforeCursor)) {
+            const nextBefore = beforeCursor.replace(/\\[ \t]*$/, '\n');
+            input.value = `${nextBefore}${value.slice(input.selectionEnd ?? cursor)}`;
+            input.selectionStart = input.selectionEnd = nextBefore.length;
+            this.updateScriptCursorFromInput(input);
+            return;
+        }
+        this.runAlgsetScript();
+    }
+
+    navigateAlgsetScriptHistory(input, direction) {
+        const modal = this.state.modal;
+        if (modal?.type !== 'algset-script') return false;
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        const history = terminal.history || [];
+        if (!history.length) return false;
+        const currentIndex = modal.historyIndex ?? history.length;
+        if (direction < 0 && currentIndex <= 0) return false;
+        if (direction > 0 && currentIndex >= history.length) return false;
+        if (currentIndex === history.length) terminal.historyDraft = input.value || '';
+        const nextIndex = currentIndex + direction;
+        const nextScript = nextIndex >= history.length ? (terminal.historyDraft || '') : history[nextIndex];
+        input.value = nextScript;
+        input.selectionStart = input.selectionEnd = nextScript.length;
+        this.state.modal.historyIndex = nextIndex;
+        this.state.modal.historyDraft = terminal.historyDraft || '';
+        this.state.modal.script = nextScript;
+        this.state.modal.cursor = nextScript.length;
+        this.syncAlgsetScriptTerminal();
+        this.updateScriptSuggestions();
+        return true;
+    }
+
+    getScriptHelpHint() {
+        return `Type 'help' for the algset script command reference.`;
+    }
+
+    appendAlgsetScriptEntry(command, output, type = 'info', nextScript = '') {
+        const modal = this.state.modal;
+        if (modal?.type !== 'algset-script') return;
+        const entries = [...(modal.entries || []), { command, output, type }].slice(-80);
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        terminal.entries = entries;
+        terminal.draft = nextScript;
+        this.update({
+            modal: {
+                ...modal,
+                entries,
+                script: nextScript,
+                cursor: nextScript.length,
+                historyIndex: terminal.history.length,
+                historyDraft: nextScript,
+                scriptPicker: null
+            },
+            contextMenu: null
+        });
     }
 
     runAlgsetScript() {
         const modal = this.state.modal;
         if (modal?.type !== 'algset-script') return;
         const input = this.root?.querySelector('#algsetScriptInput');
-        const script = input?.value || modal.script || '';
+        const script = (input?.value || modal.script || '').trim();
+        if (!script) return;
+        if (/^help$/i.test(script)) {
+            window.open(COMMAND_REFERENCE_URL, '_blank', 'noopener,noreferrer');
+            this.appendAlgsetScriptEntry(script, 'Opening command reference...', 'info');
+            return;
+        }
         saveLastAlgsetScript(script);
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        terminal.history = [...terminal.history.filter((item) => item !== script), script].slice(-80);
         const result = executeAlgsetScript(script, {
             tree: this.state.tree,
             scopePath: modal.scopePath || '',
             selectedPath: this.state.selectedPath,
             template: this.state.caseTemplate
         });
-        const summary = formatScriptSummary(result.summary);
+        const summary = this.formatTerminalScriptSummary(result.summary);
         if (!result.ok) {
-            this.update({ modal: { ...modal, script, summary }, contextMenu: null });
-            showFloatingMessage('Script did not run', 'error');
+            const output = `${summary}\n\n${this.getScriptHelpHint()}`;
+            this.appendAlgsetScriptEntry(script, output, 'error');
             return;
         }
         const deletedCount = result.summary.deletedCases + result.summary.deletedFolders;
         if (deletedCount > 5) {
             this.openConfirm('Run Script', `This script deletes ${deletedCount} items. Run it anyway?`, () => {
-                this.applyAlgsetScriptResult(result, { ...modal, script, summary });
+                this.applyAlgsetScriptResult(result, { ...modal, script: '', cursor: 0, entries: [...(modal.entries || []), { command: script, output: summary, type: 'info' }] });
             }, () => {
-                this.update({ modal: { ...modal, script, summary: `${summary}\n\nCancelled before applying deletes.` }, contextMenu: null });
+                this.appendAlgsetScriptEntry(script, `${summary}\n\nCancelled before applying deletes.`, 'info');
             });
             return;
         }
-        this.applyAlgsetScriptResult(result, { ...modal, script, summary });
+        this.applyAlgsetScriptResult(result, {
+            ...modal,
+            script: '',
+            cursor: 0,
+            entries: [...(modal.entries || []), { command: script, output: summary, type: 'info' }]
+        });
     }
 
     applyAlgsetScriptResult(result, modal) {
@@ -2342,8 +2847,20 @@ class JSONCreator {
             this.state.editor = { type: 'welcome', tab: 'shape' };
         }
         this.persistRoot();
-        showFloatingMessage('Script ran', 'success');
-        this.update({ modal: { ...modal, summary: modal.summary }, contextMenu: null });
+        const entries = (modal.entries || []).slice(-80);
+        const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
+        terminal.entries = entries;
+        terminal.draft = modal.script || '';
+        this.update({
+            modal: {
+                ...modal,
+                entries,
+                scriptPicker: null,
+                historyIndex: terminal.history.length,
+                historyDraft: terminal.draft
+            },
+            contextMenu: null
+        });
     }
 
     openCaseTemplate() {
@@ -2495,7 +3012,7 @@ class JSONCreator {
     commitShapeValueEdit() {
         const edit = this.state.shapeValueEdit;
         if (!edit) return true;
-        const value = String(edit.value || '').trim().toUpperCase();
+        const value = String(edit.value || '').trim();
         if (!this.isValidLayerValue(value)) {
             showFloatingMessage('Invalid state. Enter a valid 12-character shape value.', 'error');
             this.state.shapeValueEdit = { ...edit, value, invalid: true };
@@ -2664,11 +3181,12 @@ class JSONCreator {
         const file = this.root?.querySelector('#jsonImportFile')?.files?.[0];
         if (!file) return showFloatingMessage('Please select a JSON file', 'error');
         try {
-            const text = await readFileAsText(file);
-            const data = JSON.parse(text);
-            if (this.state.modal.scope === 'root') {
-                if (mode === 'override') this.state.tree = normalizeTree(data);
-                else deepMergeTree(this.state.tree, data);
+                const text = await readFileAsText(file);
+                const data = JSON.parse(text);
+                if (this.state.modal.scope === 'root') {
+                    this.setRootMetadata(this.state.activeRoot, this.getRootMetadataFromImport(data));
+                    if (mode === 'override') this.state.tree = normalizeTree(data);
+                    else deepMergeTree(this.state.tree, data);
                 this.persistRoot();
                 this.closeModal(false);
                 showFloatingMessage('Data imported to root successfully', 'success');
@@ -2767,6 +3285,7 @@ class JSONCreator {
     resetAllData() {
         this.openConfirm('Reset All Data', 'Are you sure you want to reset ALL data?', () => {
             AppState.developingJSONs = { default: normalizeTree(DEFAULT_ALGSET) };
+            AppState.developingJSONMetadata = { default: this.getRootMetadataFromImport({}) };
             AppState.activeDevelopingJSON = 'default';
             saveDevelopingJSONs();
             this.state.activeRoot = 'default';

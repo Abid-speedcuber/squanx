@@ -200,6 +200,20 @@ export default class SquanLib {
     }
 
     /**
+     * addCommasPreservingSeparators: add commas to numeric shorthand without
+     * flattening slices/spaces into a single separator type.
+     *
+     * @param {string} alg the scramble
+     * @returns {string} the scramble with numeric shorthand normalized
+     */
+    addCommasPreservingSeparators(alg) {
+        return alg.split(/([/\\| ]+)/).map(part => {
+            if (!part || /^[/\\| ]+$/.test(part)) return part;
+            return this.addCommas(part);
+        }).join('');
+    }
+
+    /**
      * isKarn: returns true if the string uses any letters, excluding A and a
      *
      * @param {string} str the alg
@@ -238,7 +252,7 @@ export default class SquanLib {
         alg = alg.replaceAll(/ ([\/\\\|]) /g, "$1")
         if (/[\/\\\|]{2,}/.test(alg)) throw new Error("unkarnifyHelp: Two slices in a row.");
 
-        if (!this.isKarn(alg)) return alg; // not karn at all
+        if (!this.isKarn(alg)) return this.addCommasPreservingSeparators(alg); // not karn at all
 
         // these can be "", if the alg starts/ends with a slice
         let firstMove, lastMove;

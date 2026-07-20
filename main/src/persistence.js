@@ -1,6 +1,8 @@
 const LARGE_KEYS = Object.freeze([
     'sq1TrainingJSONs',
+    'sq1TrainingJSONMetadata',
     'sq1DevelopingJSONs',
+    'sq1DevelopingJSONMetadata',
     'sq1DevelopingRootNames',
     'sq1SelectedCasesByAlgset',
     'sq1SelectedCases',

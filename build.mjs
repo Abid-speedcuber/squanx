@@ -7,6 +7,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const sourceDir = path.join(rootDir, 'main');
 const publicDir = path.join(rootDir, 'public');
 const assetsDir = path.join(publicDir, 'assets');
+const buildId = String(Date.now());
 
 await rm(publicDir, { recursive: true, force: true });
 await mkdir(assetsDir, { recursive: true });
@@ -19,6 +20,9 @@ await build({
   splitting: true,
   target: 'es2022',
   minify: true,
+  define: {
+    'globalThis.__SQ1_BUILD_ID__': JSON.stringify(buildId)
+  },
   entryNames: '[name].min',
   chunkNames: 'chunks/[name]-[hash].min',
   legalComments: 'none'
@@ -35,10 +39,13 @@ for (const fileName of ['styles.css', 'devtool.css']) {
 }
 
 const html = await readFile(path.join(sourceDir, 'index.html'), 'utf8');
-const publicHtml = html.replace(
-  '<script type="module" src="./src/app.js"></script>',
-  '<script type="module" src="./assets/app.min.js"></script>'
-);
+const publicHtml = html
+  .replace('<link rel="stylesheet" href="./css/styles.css">', `<link rel="stylesheet" href="./css/styles.css?v=${buildId}">`)
+  .replace('<link rel="stylesheet" href="./css/devtool.css">', `<link rel="stylesheet" href="./css/devtool.css?v=${buildId}">`)
+  .replace(
+    '<script type="module" src="./src/app.js"></script>',
+    `<script type="module" src="./assets/app.min.js?v=${buildId}"></script>`
+  );
 
 await writeFile(path.join(publicDir, 'index.html'), publicHtml);
 

@@ -49,7 +49,7 @@ function scanSegments(text, callback) {
             if (char === quote && previous !== '\\') quote = '';
             continue;
         }
-        if (char === '"' || char === "'") {
+        if (char === '"' || (char === "'" && !/[a-z0-9]/i.test(previous || ''))) {
             quote = char;
             continue;
         }
@@ -235,7 +235,12 @@ function parseFieldValue(field, value) {
     if (field === 'auf') return list.map((item) => normalizeMove(item, 'U'));
     if (field === 'adf') return list.map((item) => normalizeMove(item, 'D'));
     if (field === 'post-abf') return list;
+    if (field === 'parity') return list.map(String).filter((item) => item.toLowerCase() !== 'ignore');
     return list.map(String);
+}
+
+function isParityIgnoreValue(value) {
+    return parseList(value).some((item) => String(item).trim().toLowerCase() === 'ignore');
 }
 
 function fieldName(alias) {
@@ -683,14 +688,17 @@ function applyFieldCommand(item, command, summary) {
     }
     if (command.field === 'post-abf') {
         const values = parseFieldValue('post-abf', command.value);
-        const auf = values.map((value) => normalizeMove(value, 'U'));
-        const adf = values.map((value) => normalizeMove(value, 'D'));
+        const auf = values.filter((value) => String(value).trim().toUpperCase().startsWith('U')).map((value) => normalizeMove(value, 'U'));
+        const adf = values.filter((value) => String(value).trim().toUpperCase().startsWith('D')).map((value) => normalizeMove(value, 'D'));
         const changedAuf = setCaseField(item, 'auf', command.verb === 'remove' ? setArrayUnique(item.auf, auf, 'remove') : setArrayUnique(item.auf, auf, command.verb), summary, 'post-abf');
         const changedAdf = setCaseField(item, 'adf', command.verb === 'remove' ? setArrayUnique(item.adf, adf, 'remove') : setArrayUnique(item.adf, adf, command.verb), summary, 'post-abf');
         return changedAuf || changedAdf;
     }
 
     const field = command.field;
+    if (field === 'parity' && isParityIgnoreValue(command.value)) {
+        return setCaseField(item, field, [], summary, field);
+    }
     const value = parseFieldValue(field, command.value);
     if (Array.isArray(item[field]) || ['parity', 'rul', 'rdl', 'auf', 'adf', 'equator'].includes(field)) {
         return setCaseField(item, field, setArrayUnique(item[field], value, command.verb), summary, field);
