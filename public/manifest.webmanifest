@@ -1,0 +1,43 @@
+{
+  "name": "SquanGo Everything Trainer",
+  "short_name": "Squanx",
+  "start_url": "./",
+  "scope": "./",
+  "id": "./manifest.webmanifest",
+  "display": "standalone",
+  "background_color": "#020813",
+  "theme_color": "#d9e9ff",
+  "description": "A trainer for anything square-1. If you can think of it, you can train it.",
+  "icons": [
+    {
+      "src": "viz/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "viz/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "viz/favicon-48x48.png",
+      "sizes": "48x48",
+      "type": "image/png"
+    },
+    {
+      "src": "viz/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "viz/favicon-256x256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    },
+    {
+      "src": "viz/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

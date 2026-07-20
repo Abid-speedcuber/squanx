@@ -30,6 +30,12 @@ await build({
 
 await cp(path.join(sourceDir, 'viz'), path.join(publicDir, 'viz'), { recursive: true });
 await cp(path.join(sourceDir, 'default-algset'), path.join(publicDir, 'default-algset'), { recursive: true });
+await cp(path.join(sourceDir, 'manifest.webmanifest'), path.join(publicDir, 'manifest.webmanifest'));
+
+let sw = await readFile(path.join(sourceDir, 'service-worker.js'), 'utf8');
+sw = sw.replaceAll('__SW_BUILD_ID__', buildId);
+await writeFile(path.join(publicDir, 'service-worker.js'), sw);
+
 await mkdir(path.join(publicDir, 'css'), { recursive: true });
 
 for (const fileName of ['styles.css', 'devtool.css']) {

@@ -9,12 +9,25 @@
     <link rel="icon" type="image/png" sizes="32x32" href="./viz/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="./viz/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./viz/apple-touch-icon.png">
-    <link rel="stylesheet" href="./css/styles.css?v=1784518685118">
-    <link rel="stylesheet" href="./css/devtool.css?v=1784518685118">
+    <meta name="theme-color" content="#d9e9ff">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="stylesheet" href="./css/styles.css?v=1784527926784">
+    <link rel="stylesheet" href="./css/devtool.css?v=1784527926784">
 </head>
 <body>
     <div class="app-container" id="app"></div>
 
-    <script type="module" src="./assets/app.min.js?v=1784518685118"></script>
+    <script type="module" src="./assets/app.min.js?v=1784527926784"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./service-worker.js')
+                .then((registration) => {
+                    console.log('[SW] Registered service worker:', registration);
+                })
+                .catch((error) => {
+                    console.error('[SW] Service worker registration failed:', error);
+                });
+        }
+    </script>
 </body>
 </html>
