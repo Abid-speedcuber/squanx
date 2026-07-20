@@ -1069,7 +1069,7 @@ class JSONCreator {
                                 <span class="algset-script-shell-prompt" aria-hidden="true">${escapeHtml(prompt)}</span>
                                 <div class="algset-script-editor">
                                     <pre id="algsetScriptHighlight" class="algset-script-highlight" aria-hidden="true">${highlighted}</pre>
-                                    <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="type help for the command reference">${escapeHtml(script)}</textarea>
+                                    <textarea id="algsetScriptInput" class="algset-script-input" data-action="algset-script-input" spellcheck="false" placeholder="Insert command here (type \"help\" for the command reference)">${escapeHtml(script)}</textarea>
                                 </div>
                             </div>
                         </div>
@@ -1321,6 +1321,10 @@ class JSONCreator {
         if (!target.closest('.info-box')) this.closeInfoBoxes();
         if (target.id === 'algsetScriptInput') {
             setTimeout(() => this.updateScriptCursorFromInput(target), 0);
+        }
+        if (this.state.modal?.type === 'algset-script' && target.closest('.algset-script-console') && target.id !== 'algsetScriptInput') {
+            setTimeout(() => this.focusAlgsetScriptPromptIfNoSelection(), 0);
+            return;
         }
         if (this.state.contextMenu && !target.closest('[data-context-menu]')) {
             const keepRootSelector = this.state.modal?.type === 'root-selector' && target.closest('.root-selector-modal');
@@ -2585,6 +2589,15 @@ class JSONCreator {
         highlight.scrollLeft = input.scrollLeft;
     }
 
+    focusAlgsetScriptPromptIfNoSelection() {
+        if (String(window.getSelection?.()?.toString() || '')) return;
+        const input = this.root?.querySelector('#algsetScriptInput');
+        if (!input) return;
+        input.focus();
+        input.selectionStart = input.selectionEnd = input.value.length;
+        this.updateScriptCursorFromInput(input);
+    }
+
     completeAlgsetScriptInput() {
         const input = this.root?.querySelector('#algsetScriptInput');
         if (!input) return;
@@ -2803,7 +2816,6 @@ class JSONCreator {
         if (!result.ok) {
             const output = `${summary}\n\n${this.getScriptHelpHint()}`;
             this.appendAlgsetScriptEntry(script, output, 'error');
-            showFloatingMessage('Script did not run', 'error');
             return;
         }
         const deletedCount = result.summary.deletedCases + result.summary.deletedFolders;
@@ -2835,7 +2847,6 @@ class JSONCreator {
             this.state.editor = { type: 'welcome', tab: 'shape' };
         }
         this.persistRoot();
-        showFloatingMessage('Script ran', 'success');
         const entries = (modal.entries || []).slice(-80);
         const terminal = this.getAlgsetScriptTerminal(modal.terminalKey);
         terminal.entries = entries;

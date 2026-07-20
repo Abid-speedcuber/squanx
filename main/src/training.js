@@ -1087,7 +1087,7 @@ function openAlgsetUserControlsModal() {
     modal.innerHTML = `
         <div class="modal-content algset-user-controls-modal">
             <div class="modal-header">
-                <h2>Algset Controls</h2>
+                <h2>Training Preferences</h2>
                 <button class="close-btn" onclick="this.closest('.modal').remove()">×</button>
             </div>
             <div class="modal-body">

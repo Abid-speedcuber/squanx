@@ -538,6 +538,8 @@
     background: #030812 !important;
     color: #d9f7ff !important;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 .algset-script-console {
@@ -549,6 +551,9 @@
     background: #01050d;
     padding: 10px 12px;
     scrollbar-gutter: stable;
+    cursor: text;
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 .algset-script-entry {
@@ -569,6 +574,8 @@
     font: inherit;
     font-size: 13px;
     line-height: 1.45;
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 .algset-script-command-line {
@@ -584,6 +591,8 @@
     font-weight: 700;
     line-height: 1.45;
     white-space: pre;
+    -webkit-user-select: text;
+    user-select: text;
 }
 
 .algset-script-entry-command {
