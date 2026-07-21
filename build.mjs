@@ -1,11 +1,14 @@
 import { build, transform } from 'esbuild';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import path from 'node:path';
+import path, { resolve } from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const sourceDir = path.join(rootDir, 'main');
-const publicDir = path.join(rootDir, 'public');
+const publicDir = process.env.BUILD_OUT_DIR
+  ? resolve(process.env.BUILD_OUT_DIR)
+  : path.join(rootDir, 'public');
 const assetsDir = path.join(publicDir, 'assets');
 const buildId = String(Date.now());
 
